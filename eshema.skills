@@ -1,0 +1,778 @@
+KSP STAFF MANAGEMENT, BARCODE & ATTENDANCE MANAGEMENT SYSTEM
+ROLE
+Act as a senior full-stack software architect, UI/UX designer, Firebase engineer, security engineer, and production-level React developer.
+You are working inside an existing GitHub repository through the Antigravity IDE.
+Your task is to design and implement a complete, production-ready Staff Management and Barcode Attendance Management System.
+Do not create a superficial demo or mockup.
+The system must be functional, responsive, secure, maintainable, and ready to deploy.
+Use the existing GitHub repository as the source codebase and inspect the existing project structure before making changes.
+Do not unnecessarily replace existing working functionality.
+________________________________________
+1. CORE OBJECTIVE
+Build a Staff Management system in which every staff member automatically receives:
+1.	A unique Staff Code.
+2.	A unique Staff ID.
+3.	A generated Code 128 barcode.
+4.	A ready-to-download Independent staff bar code in png to be added on cards.
+5.	A complete staff profile.
+6.	Attendance tracking through barcode scanning.
+7.	Daily work-session tracking.
+8.	Total hours worked calculation.
+9.	Attendance frequency/rating.
+10.	Attendance history and reports.
+The system must allow an Android smartphone camera to scan the barcode directly through the web application.
+A separate dedicated barcode scanner application should NOT be required.
+However, the architecture should also support conventional USB/Bluetooth barcode scanners that behave like keyboard input.
+________________________________________
+2. TECHNOLOGY
+Use the existing project technology where possible.
+Preferred stack:
+•	React
+•	JavaScript or TypeScript, following the existing repository
+•	Tailwind CSS
+•	Firebase Authentication
+•	Firebase Firestore
+•	Firebase Storage only if the existing project already uses it or if staff photographs require it
+•	Firebase Security Rules
+•	GitHub for source control
+•	Browser camera APIs / a reliable barcode scanning library for Code 128 scanning
+•	JsBarcode or an equivalent reliable barcode-generation library for generating Code 128 barcodes
+•	Lucide React icons where icons are required
+•	Responsive mobile-first UI
+Do not introduce unnecessary backend infrastructure.
+Use Firebase as the backend unless the existing architecture requires otherwise.
+________________________________________
+3. STAFF CODE FORMAT
+Every staff member must automatically receive a Staff Code using this exact format:
+KSP-XXX-XXX-XXXX
+Example:
+KSP-137-052-1025
+The system must generate this automatically.
+The Staff Code must be human-readable.
+The barcode should encode the complete Staff Code.
+Use Code 128 for the barcode.
+________________________________________
+4. FIRST THREE DIGITS
+The first three digits represent:
+XXX
+Digit 1 = Nationality
+•	1 = Rwandan
+•	2 = Foreigner
+Digit 2 = Department
+•	1 = Executive
+•	2 = Management
+•	3 = Trainer
+•	4 = Other
+Digit 3 = Gender
+•	7 = Female
+•	8 = Male
+Example:
+137
+means:
+•	1 = Rwandan
+•	3 = Trainer
+•	7 = Female
+________________________________________
+5. SECOND THREE DIGITS
+The second three digits follow this structure:
+XXC
+The first two digits represent education level.
+Education codes:
+•	00 = Bachelor's Degree
+•	01 = A2 [Highschool]
+•	02 = A1 
+•	05 = Master's Degree
+•	10 = PhD
+The third digit represents number of certificates:
+•	0 = 0 certificates
+•	1 = 1–5 certificates
+•	2 = 6–10 certificates
+•	3 = 11 or more certificates
+Examples:
+000 = Bachelor's + 0 certificates
+051 = Master's + 1–5 certificates
+052 = Master's + 6–10 certificates
+103 = PhD + 11+ certificates
+________________________________________
+6. FINAL FOUR DIGITS
+The final four digits follow:
+BXXX
+The first digit represents branch:
+•	1 = Kigali
+•	2 = Kayonza
+•	3 = Elsewhere
+The final three digits represent the employee's sequential number.
+Examples:
+1001 = Kigali + Employee 001
+2017 = Kayonza + Employee 017
+3025 = Elsewhere + Employee 025
+The system must automatically determine the next available employee number.
+Do not create duplicate Staff Codes.
+The employee sequence must be unique according to the required numbering rules.
+Use Firestore transactions where necessary to prevent duplicate employee numbers when multiple administrators create staff simultaneously.
+________________________________________
+7. IMPORTANT DATABASE DESIGN RULE
+DO NOT use the KSP Staff Code as the immutable database primary key.
+Every employee must have a permanent internal unique identifier, preferably a Firebase-generated document ID or UUID.
+Example:
+Internal ID:
+abc123xyz
+Staff Code:
+KSP-137-052-1025
+The internal ID must remain unchanged even if the employee's department, gender, education, nationality, branch, or certificate range changes.
+The KSP Staff Code should be treated as the employee's human-readable identification code.
+If information that contributes to the Staff Code changes, provide a controlled mechanism to regenerate/reissue the Staff Code while preserving the employee's permanent internal identity and historical records.
+Never lose historical attendance data because a Staff Code changes.
+________________________________________
+8. STAFF CREATION
+Create a complete Staff Creation form.
+Fields should include:
+•	First Name
+•	Middle Name
+•	Last Name
+•	Gender
+•	Nationality
+•	Department
+•	Branch
+•	Education Level
+•	Number/Range of Certificates
+•	Position/Job Title
+•	Phone Number
+•	Email
+•	Date Joined
+•	Employment Status
+•	Optional emergency/contact information where appropriate
+•	Notes
+The system should automatically generate:
+•	Internal Staff ID
+•	Staff Code
+•	Barcode
+The administrator must NOT manually type the Staff Code.
+The system generates it.
+________________________________________
+9. STAFF BAR CODE
+Create a professional ready – to – download Barcode in PDF of PNG.
+The barcode must be clearly readable by smartphone cameras and standard barcode scanners.
+Use a high-contrast Code 128 barcode.
+Provide:
+•	Download/Generate PDF if supported by the project architecture
+•	Regenerate Barcode
+Do not encode private personal information directly into the barcode.
+The barcode should primarily encode:
+KSP-XXX-XXX-XXXX
+The ERP retrieves staff information from Firebase after the code is scanned.
+________________________________________
+10. BARCODE SCANNING
+Implement barcode scanning directly inside the web application.
+The application must be able to use an Android smartphone camera.
+The user should open the relevant scanning page.
+The browser requests camera permission.
+The camera detects the Code 128 barcode.
+The application extracts the Staff Code.
+Example:
+KSP-137-052-1025
+The system then finds the corresponding staff member in Firestore.
+The scanner must support continuous scanning without requiring the user to reload the page after every scan.
+Provide:
+•	Start scanner
+•	Stop scanner
+•	Camera selection where supported
+•	Flashlight/torch support where browser/device APIs permit
+•	Manual Staff Code entry as a fallback
+•	Clear scan result
+•	Scan success feedback
+•	Scan error feedback
+The system should prevent duplicate rapid scans caused by the same barcode remaining in front of the camera.
+Implement a configurable scan cooldown/debounce mechanism.
+________________________________________
+11. ATTENDANCE SCANNER PAGE
+Create a dedicated:
+ATTENDANCE SCANNER
+page.
+This page has one primary purpose:
+Record staff attendance.
+When a barcode is scanned on this page, DO NOT simply display the profile.
+The system must determine whether the employee should be clocked IN or OUT.
+________________________________________
+12. ODD/EVEN SCAN ATTENDANCE LOGIC
+Use alternating attendance sessions.
+For each staff member and each working day:
+1st scan = CLOCK IN
+2nd scan = CLOCK OUT
+3rd scan = CLOCK IN
+4th scan = CLOCK OUT
+5th scan = CLOCK IN
+6th scan = CLOCK OUT
+Continue this alternating pattern throughout the day.
+Example:
+08:02 → IN
+12:00 → OUT
+13:00 → IN
+17:10 → OUT
+The system must calculate each session duration.
+Example:
+08:02–12:00 = 3h 58m
+13:00–17:10 = 4h 10m
+Total = 8h 08m
+________________________________________
+13. OPEN SESSION PROTECTION
+If an employee has an open IN session, the next valid scan should normally close that session.
+Example:
+IN 08:00
+OUT 17:00
+If the employee scans again:
+IN 18:00
+If the employee scans again:
+OUT 19:00
+The system must maintain all sessions separately.
+If the working day ends with an open session, clearly mark it as:
+OPEN SESSION
+and allow an authorized administrator/manager to correct it.
+Do not silently fabricate a departure time.
+________________________________________
+14. ATTENDANCE SCANNER FEEDBACK
+After scanning, show a large visual confirmation.
+For IN:
+CLOCKED IN
+Staff Name
+Staff Photo (Direct profile image link | directly displayed)
+Staff Code
+Arrival Time
+Current Total Hours
+For OUT:
+CLOCKED OUT
+Staff Name
+Staff Photo (Direct profile image link | directly displayed)
+Staff Code
+Departure Time
+Current Session Duration
+Total Hours Worked Today
+Use strong visual feedback and optional sound feedback.
+The scanner page should automatically return to the scanning state after a short configurable period.
+________________________________________
+15. ATTENDANCE DASHBOARD
+Create an Attendance Dashboard showing:
+•	Today's date
+•	Current time
+•	Total staff
+•	Present
+•	Absent
+•	Currently working
+•	Currently outside
+•	Late arrivals
+•	Completed shifts
+•	Open sessions
+•	Total working hours
+•	Average working hours
+Provide a live attendance table.
+Columns:
+•	Staff Photo
+•	Staff Name
+•	Staff Code
+•	Department
+•	Branch
+•	First Arrival
+•	Current Status
+•	Last Scan
+•	Total Hours Today
+•	Number of Sessions
+Allow search and filtering by:
+•	Staff
+•	Department
+•	Branch
+•	Date
+•	Status
+________________________________________
+16. STAFF PROFILE AFTER RANDOM SCAN
+The application must support general barcode scanning outside the Attendance Scanner page.
+If a barcode is randomly scanned from a general Staff Lookup/Scanner page, DO NOT clock the employee in or out.
+Instead, show the full staff profile.
+The Staff Profile should include:
+Personal Information
+•	Full Name
+•	Photo
+•	Staff Code
+•	Gender
+•	Nationality
+Employment Information
+•	Job Title
+•	Department
+•	Branch
+•	Employment Status
+•	Date Joined
+Education
+•	Education Level
+•	Certificate Range
+Attendance Summary
+•	Today's status
+•	Today's hours
+•	Weekly hours
+•	Monthly hours
+•	Days present
+•	Days absent
+•	Late arrivals
+•	Attendance percentage
+•	Attendance rating out of 10
+Where appropriate, provide authorized managers/administrators with historical attendance information.
+Do not expose sensitive information to users who do not have permission.
+________________________________________
+17. ATTENDANCE RATING
+Separate attendance from performance.
+Calculate:
+Attendance Percentage:
+Days Present / Expected Working Days × 100
+Then calculate an Attendance Rating:
+Attendance Percentage / 10
+Example:
+92% attendance
+= 9.2 / 10
+Do not call this a job performance score.
+Label it:
+ATTENDANCE RATING
+A separate PERFORMANCE RATING should be implemented independently if required.
+Managers should be able to assign performance ratings according to their permissions.
+________________________________________
+18. JOB/PERFORMANCE RATING
+Create a separate performance rating system.
+Rating:
+0–10
+Possible categories:
+•	Attendance
+•	Punctuality
+•	Productivity
+•	Professionalism
+•	Quality of Work
+•	Teamwork
+Allow authorized managers to enter ratings.
+Calculate an overall performance rating.
+Do not automatically equate attendance with job performance.
+Display separately:
+Attendance Rating: 9.2/10
+Performance Rating: 8.7/10
+Overall Rating: 8.9/10
+If management has not entered a performance rating, show:
+Not Rated
+instead of inventing one.
+________________________________________
+19. WORKING HOURS
+Calculate working hours from actual attendance sessions.
+Do not calculate hours simply from:
+First Arrival → Final Departure
+because employees may leave and return multiple times.
+Correct calculation:
+Session 1:
+IN → OUT
+Session 2:
+IN → OUT
+Session 3:
+IN → OUT
+Total:
+Session 1 + Session 2 + Session 3
+Store durations in minutes in the database for reliable calculations.
+Display them in human-readable format:
+8h 42m
+________________________________________
+20. ATTENDANCE HISTORY
+Every scan must create an auditable record.
+Store:
+•	Staff internal ID
+•	Staff Code
+•	Timestamp
+•	Date
+•	Scan type
+•	IN/OUT status
+•	Device/browser information where appropriate
+•	User/operator if applicable
+•	Location only if explicitly implemented and authorized
+•	Attendance record ID
+Do not overwrite historical scans.
+Attendance history must remain auditable.
+________________________________________
+21. FIRESTORE DATA STRUCTURE
+Design an appropriate Firestore structure.
+At minimum, consider:
+staff
+attendance
+attendanceSessions
+branches
+departments
+roles
+performanceRatings
+auditLogs
+settings
+Use normalized references where appropriate.
+Example staff document:
+{
+staffCode: "KSP-137-052-1025",
+firstName: "Jean",
+lastName: "Claude",
+gender: "male",
+nationality: "rwandan",
+department: "trainer",
+educationLevel: "masters",
+certificateRange: "6-10",
+branch: "kigali",
+employeeNumber: 25,
+jobTitle: "Trainer",
+employmentStatus: "active",
+createdAt: timestamp,
+updatedAt: timestamp
+}
+Attendance records must reference the permanent internal staff ID.
+Do not depend solely on Staff Code.
+________________________________________
+22. SECURITY
+Implement Firebase Authentication and Firestore Security Rules.
+Users must only be able to access information according to their role.
+At minimum support:
+•	Owner
+•	Manager
+•	Accountant/authorized staff
+•	Attendance operator
+•	Staff member
+Owner:
+Full access.
+
+Manager:
+Staff management and attendance/reporting according to assigned permissions.
+
+Attendance Operator:
+Can scan and record attendance but should not automatically have access to confidential staff information.
+
+Staff:
+Can view their permitted personal information and attendance information.
+Do not expose sensitive employee information through unrestricted Firestore queries.
+Validate permissions both in the UI and Firebase Security Rules.
+Never rely only on frontend hiding.
+________________________________________
+23. ATTENDANCE CORRECTIONS
+Create an administrative attendance correction mechanism.
+Authorized users should be able to correct:
+•	Missing IN
+•	Missing OUT
+•	Incorrect scan
+•	Wrong date
+•	Wrong session
+Every correction must create an audit record containing:
+•	Who made the correction
+•	What was changed
+•	Previous value
+•	New value
+•	Date/time
+•	Reason
+Never silently modify historical attendance.
+________________________________________
+24. REPORTING
+Create reports for:
+Daily attendance
+Weekly attendance
+Monthly attendance
+Staff attendance history
+Department attendance
+Branch attendance
+Late arrivals
+Absences
+Total working hours
+Average working hours
+Attendance percentage
+Attendance rating
+Performance rating
+Reports should support filtering.
+Where practical, provide CSV export and print-friendly reports.
+________________________________________
+25. UI/UX
+The interface must look like a professional modern enterprise ERP.
+Use:
+•	Clean dashboard
+•	Responsive layout
+•	Mobile-first scanner
+•	Desktop-friendly administration
+•	Clear typography
+•	Cards
+•	Tables
+•	Search
+•	Filters
+•	Status badges
+•	Modal dialogs
+•	Toast notifications
+•	Loading states
+•	Empty states
+•	Error states
+The barcode scanner page must be extremely simple because it may be used continuously at an entrance/reception desk.
+The most important action on that page should be:
+SCAN STAFF ID
+Do not overload the attendance scanner interface.
+________________________________________
+26. MOBILE EXPERIENCE
+The attendance scanner must be optimized specifically for Android phones.
+Requirements:
+•	Camera fills an appropriate portion of the screen
+•	Large scanning area
+•	Large result feedback
+•	Easy camera permission flow
+•	No tiny buttons
+•	Works in portrait mode
+•	Responsive to different screen sizes
+•	Prevent accidental navigation while scanning
+The desktop version should also support webcam scanning.
+________________________________________
+27. BARCODE GENERATION
+Generate Code 128 barcodes from Staff Codes.
+Example:
+KSP-137-052-1025
+The generated barcode should:
+•	Have sufficient quiet zone
+•	Have sufficient width/height
+•	Have high contrast
+•	Include human-readable Staff Code underneath
+•	Be printable
+•	Remain scannable when printed on an ID card
+Do not generate QR codes unless specifically required as an additional feature.
+The primary identification barcode is Code 128.
+________________________________________
+28. STAFF ID GENERATION
+When creating a staff member:
+1.	Validate form.
+2.	Determine classification digits.
+3.	Determine education/certificate digits.
+4.	Determine branch digit.
+5.	Generate sequential employee number.
+6.	Construct Staff Code.
+7.	Verify uniqueness.
+8.	Save staff record.
+9.	Generate barcode.
+10.	Make Staff ID card available for printing.
+Example:
+KSP-137-052-1025
+________________________________________
+29. DUPLICATE PREVENTION
+The system must prevent duplicate:
+•	Staff Codes
+•	Employee numbers where uniqueness applies
+•	Staff records
+•	Attendance scans
+•	Duplicate rapid barcode scans
+Use Firestore transactions where necessary.
+Do not rely on random frontend checks alone.
+________________________________________
+30. TIME HANDLING
+Use Firebase/server timestamps where possible rather than trusting the user's local device clock.
+Display time in the organization's configured timezone.
+Default timezone:
+Africa/Kigali
+Provide a centralized configuration so this can be changed later.
+Be consistent with date boundaries.
+Attendance calculations must use the organization's configured timezone rather than blindly using UTC calendar dates.
+________________________________________
+31. GITHUB WORKFLOW
+Before coding:
+1.	Inspect the existing repository.
+2.	Understand the current architecture.
+3.	Identify existing authentication.
+4.	Identify existing Firebase configuration.
+5.	Identify existing user/role system.
+6.	Identify existing UI components.
+7.	Reuse existing components where appropriate.
+8.	Do not destroy existing functionality.
+Then implement the new functionality incrementally.
+Create clean commits/checkpoints for major features.
+Do not leave experimental files or unused dependencies.
+________________________________________
+32. FIREBASE CONSOLE
+Use Firebase Console configuration appropriately.
+Set up/configure:
+•	Authentication
+•	Firestore
+•	Firestore indexes where required
+•	Security Rules
+•	Storage if needed
+•	Firebase project configuration
+Do not expose private Firebase administrative credentials in the frontend.
+Use environment variables for client configuration where appropriate.
+Never place service-account private keys in the GitHub repository.
+________________________________________
+33. ERROR HANDLING
+Handle:
+•	Unknown barcode
+•	Deleted staff
+•	Inactive staff
+•	Camera permission denied
+•	Camera unavailable
+•	Barcode not detected
+•	Invalid barcode
+•	Duplicate scan
+•	Firestore failure
+•	Network failure
+•	Missing staff photo
+•	Open attendance session
+•	Invalid attendance correction
+Provide understandable user messages.
+Example:
+"Staff ID not recognized."
+"Jean Claude has been clocked IN at 08:03."
+"Jean Claude has been clocked OUT at 17:12."
+"Camera permission is required to scan Staff IDs."
+________________________________________
+34. TESTING
+Before considering the system complete, test:
+1.	Create Rwandan employee.
+2.	Create foreign employee.
+3.	Create male employee.
+4.	Create female employee.
+5.	Test every department.
+6.	Test every education code.
+7.	Test every certificate range.
+8.	Test every branch.
+9.	Verify Staff Code generation.
+10.	Verify no duplicate Staff Codes.
+11.	Generate barcode.
+12.	Scan barcode using Android.
+13.	Scan barcode using desktop webcam.
+14.	Test first scan = IN.
+15.	Test second scan = OUT.
+16.	Test third scan = IN.
+17.	Test fourth scan = OUT.
+18.	Test multiple sessions.
+19.	Test total hours.
+20.	Test open sessions.
+21.	Test unknown barcode.
+22.	Test inactive staff.
+23.	Test random staff lookup.
+24.	Test permissions.
+25.	Test attendance corrections.
+26.	Test audit logs.
+27.	Test reports.
+28.	Test mobile responsiveness.
+29.	Test Firebase Security Rules.
+30.	Test concurrent staff creation.
+Do not mark the feature complete until the critical flows work.
+________________________________________
+35. IMPORTANT BEHAVIORAL DISTINCTION
+There are two different scanning contexts.
+ATTENDANCE SCANNER
+Barcode scan:
+Staff Identification
+↓
+Check today's attendance
+↓
+If no open session:
+CLOCK IN
+↓
+If open session exists:
+CLOCK OUT
+↓
+Update total working hours
+GENERAL STAFF SCANNER
+Barcode scan:
+Staff Identification
+↓
+Retrieve Staff Profile
+↓
+Display full authorized staff information
+↓
+DO NOT modify attendance
+The same barcode must therefore have context-sensitive behavior depending on which module initiated the scan.
+________________________________________
+36. FUTURE EXTENSIBILITY
+Architect the system so that the same Staff ID can later be used for:
+•	Access control
+•	Equipment assignment
+•	Payroll
+•	Leave management
+•	Training records
+•	Performance management
+•	Task assignment
+•	Asset management
+•	Visitor/staff identification
+•	Staff directory
+Do not tightly couple barcode scanning exclusively to attendance.
+The barcode is the staff identification mechanism.
+Attendance is one application of that identification mechanism.
+________________________________________
+37. FINAL DELIVERABLE
+At the end of implementation, provide:
+1.	Fully functional Staff Management module.
+2.	Automatic Staff Code generation.
+3.	Automatic Code 128 barcode generation.
+4.	Printable Staff ID cards.
+5.	Android camera barcode scanner.
+6.	Desktop webcam scanner where supported.
+7.	Attendance Scanner.
+8.	Alternating IN/OUT attendance logic.
+9.	Multiple daily work sessions.
+10.	Total working hours calculation.
+11.	Attendance percentage.
+12.	Attendance rating /10.
+13.	Separate performance rating system.
+14.	Staff profile lookup through barcode.
+15.	Attendance dashboard.
+16.	Attendance history.
+17.	Reports.
+18.	CSV export where appropriate.
+19.	Attendance correction system.
+20.	Audit logging.
+21.	Firebase Security Rules.
+22.	Mobile responsive interface.
+23.	Proper error handling.
+24.	Production-quality code.
+________________________________________
+38. DEVELOPMENT PRINCIPLE
+Do not simply generate code that looks correct.
+Think through the actual business workflow.
+The system will be used by real staff members and administrators.
+Prioritize:
+•	Data integrity
+•	Security
+•	Accurate time calculations
+•	Reliable barcode scanning
+•	Prevention of duplicate records
+•	Auditability
+•	Usability
+•	Maintainability
+•	Mobile performance
+•	Firebase scalability
+Before implementing each major feature, inspect how it fits into the existing application.
+If an existing feature can be reused, extend it instead of duplicating it.
+If a requirement is ambiguous, inspect the existing application architecture and choose the safest production-ready implementation rather than creating a temporary workaround.
+Finally, run the application, test the complete user journey from:
+CREATE STAFF
+→ GENERATE STAFF CODE
+→ GENERATE BARCODE
+→ PRINT STAFF ID
+→ SCAN STAFF ID
+→ CLOCK IN
+→ CLOCK OUT
+→ CALCULATE HOURS
+→ VIEW STAFF PROFILE
+→ VIEW ATTENDANCE HISTORY
+→ GENERATE REPORT
+and fix all errors encountered before declaring the implementation complete.
+
+39. FIREBASE CONFIGURATION
+Down below is the firebase configuration data. That should be used efficiently. 
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyC5AhtXIhwshn1sD4nsb9l-B_k9AMan9i8",
+  authDomain: "e-shema.firebaseapp.com",
+  projectId: "e-shema",
+  storageBucket: "e-shema.firebasestorage.app",
+  messagingSenderId: "429280092287",
+  appId: "1:429280092287:web:1704c1c31355ea2c965f4a",
+  measurementId: "G-Z2D1DE8JVY"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+40. GITHUB REPOSITORY
+This the repository, where everything should be pushed to: 
+https://github.com/iamnadjibu/eSHEMA 
+
