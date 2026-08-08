@@ -29,7 +29,8 @@ export default function App() {
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
     localStorage.setItem('eshema_active_user', JSON.stringify(user));
-    setActiveTab('scanner');
+    const role = user.role || 'staff';
+    setActiveTab(['super_admin', 'manager', 'operator'].includes(role) ? 'scanner' : 'dashboard');
   };
 
   const handleLogout = async () => {
@@ -70,11 +71,11 @@ export default function App() {
       {/* Main Content Stage */}
       <div className="flex-1 lg:pl-[260px] flex flex-col min-h-screen">
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-          {activeTab === 'scanner' && <AttendanceScannerView />}
-          {activeTab === 'dashboard' && <AttendanceDashboard />}
-          {activeTab === 'staff' && <StaffDirectoryView />}
-          {activeTab === 'reports' && <ReportsView />}
-          {activeTab === 'audit' && <AuditLogsView />}
+          {activeTab === 'scanner' && <AttendanceScannerView currentUser={currentUser} />}
+          {activeTab === 'dashboard' && <AttendanceDashboard currentUser={currentUser} />}
+          {activeTab === 'staff' && <StaffDirectoryView currentUser={currentUser} />}
+          {activeTab === 'reports' && <ReportsView currentUser={currentUser} />}
+          {activeTab === 'audit' && <AuditLogsView currentUser={currentUser} />}
           {activeTab === 'users' && <UserApprovalView currentUser={currentUser} />}
         </main>
 
@@ -92,6 +93,7 @@ export default function App() {
         isOpen={!!lookupStaff}
         staff={lookupStaff}
         onClose={() => setLookupStaff(null)}
+        currentUser={currentUser}
       />
     </div>
   );

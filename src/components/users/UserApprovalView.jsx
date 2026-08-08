@@ -143,6 +143,12 @@ export default function UserApprovalView({ currentUser }) {
                             Approve Operator
                           </button>
                           <button 
+                            onClick={() => handleApprove(user.uid, 'staff')}
+                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition shadow-md"
+                          >
+                            Approve Staff
+                          </button>
+                          <button 
                             onClick={() => handleReject(user.uid)}
                             className="px-2.5 py-1.5 bg-red-950/60 hover:bg-red-900/80 text-red-300 text-xs font-bold rounded-xl border border-red-800 transition"
                           >

@@ -7,7 +7,7 @@ import StaffProfileModal from './StaffProfileModal';
 import BarcodeGenerator from '../common/BarcodeGenerator';
 import InitialsAvatar from '../common/InitialsAvatar';
 
-export default function StaffDirectoryView() {
+export default function StaffDirectoryView({ currentUser }) {
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,13 +50,15 @@ export default function StaffDirectoryView() {
           </p>
         </div>
 
-        <button 
-          onClick={() => setIsCreateOpen(true)}
-          className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition shadow-lg shadow-blue-600/30 flex items-center gap-2 active:scale-95 shrink-0"
-        >
-          <UserPlus className="w-5 h-5" />
-          <span>Add Staff Member</span>
-        </button>
+        {currentUser?.role === 'super_admin' && (
+          <button 
+            onClick={() => setIsCreateOpen(true)}
+            className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition shadow-lg shadow-blue-600/30 flex items-center gap-2 active:scale-95 shrink-0"
+          >
+            <UserPlus className="w-5 h-5" />
+            <span>Add Staff Member</span>
+          </button>
+        )}
       </div>
 
       {/* Filters & Search */}
@@ -205,6 +207,7 @@ export default function StaffDirectoryView() {
         isOpen={!!selectedProfileStaff}
         staff={selectedProfileStaff}
         onClose={() => setSelectedProfileStaff(null)}
+        currentUser={currentUser}
       />
     </div>
   );

@@ -7,16 +7,22 @@ export default function LeftSidebar({ activeTab, setActiveTab, currentUser, onLo
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isGeneralScannerOpen, setIsGeneralScannerOpen] = useState(false);
 
-  const userRole = currentUser?.role || 'manager';
+  const userRole = currentUser?.role || 'staff';
 
-  const navItems = [
-    { id: 'scanner', label: 'Attendance Scanner', icon: Camera },
-    { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
-    { id: 'staff', label: 'Staff Directory', icon: Users },
-    { id: 'reports', label: 'Reports', icon: BarChart2 },
-    { id: 'audit', label: 'Audit Logs', icon: ShieldCheck },
-    ...(userRole === 'super_admin' || userRole === 'manager' ? [{ id: 'users', label: 'User Approvals', icon: UserCheck }] : [])
-  ];
+  const navItems = [];
+  if (['super_admin', 'manager', 'operator'].includes(userRole)) {
+    navItems.push({ id: 'scanner', label: 'Attendance Scanner', icon: Camera });
+  }
+  navItems.push({ id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard });
+  
+  if (['super_admin', 'manager'].includes(userRole)) {
+    navItems.push({ id: 'staff', label: 'Staff Directory', icon: Users });
+    navItems.push({ id: 'reports', label: 'Reports', icon: BarChart2 });
+    navItems.push({ id: 'audit', label: 'Audit Logs', icon: ShieldCheck });
+  }
+  if (userRole === 'super_admin') {
+    navItems.push({ id: 'users', label: 'User Approvals', icon: UserCheck });
+  }
 
   return (
     <>

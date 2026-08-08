@@ -5,7 +5,7 @@ import { getTodayDateString, formatTimeString, formatHoursMinutes, formatDateTim
 import CorrectionModal from './CorrectionModal';
 import InitialsAvatar from '../common/InitialsAvatar';
 
-export default function AttendanceDashboard() {
+export default function AttendanceDashboard({ currentUser }) {
   const [attendanceData, setAttendanceData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [targetDate, setTargetDate] = useState(getTodayDateString());
@@ -18,7 +18,10 @@ export default function AttendanceDashboard() {
 
   const loadData = async () => {
     setLoading(true);
-    const data = await getTodayAttendance(targetDate);
+    let data = await getTodayAttendance(targetDate);
+    if (currentUser?.role === 'staff') {
+      data = data.filter(a => a.staff?.email === currentUser.email);
+    }
     setAttendanceData(data);
     setLoading(false);
   };
@@ -226,14 +229,16 @@ export default function AttendanceDashboard() {
                   </td>
 
                   <td className="p-4 text-right">
-                    <button 
-                      onClick={() => setCorrectionTarget(item)}
-                      className="p-2 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 transition text-xs font-medium flex items-center gap-1 ml-auto"
-                      title="Correct Attendance Record"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>Correct</span>
-                    </button>
+                    {['super_admin', 'manager'].includes(currentUser?.role) && (
+                      <button 
+                        onClick={() => setCorrectionTarget(item)}
+                        className="p-2 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 transition text-xs font-medium flex items-center gap-1 ml-auto"
+                        title="Correct Attendance Record"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Correct</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

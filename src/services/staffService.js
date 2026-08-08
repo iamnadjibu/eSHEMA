@@ -49,9 +49,7 @@ export async function getAllStaff() {
       getDocs(staffCol),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000))
     ]);
-    if (!snapshot.empty) {
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    }
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (err) {
     console.warn("Firestore offline or permission pending, using local storage fallback:", err.message);
   }
@@ -75,6 +73,7 @@ export async function getStaffByCode(staffCode) {
       const doc = snapshot.docs[0];
       return { id: doc.id, ...doc.data() };
     }
+    return null;
   } catch (err) {
     console.warn("Firestore lookup error, using local fallback:", err.message);
   }
@@ -97,6 +96,7 @@ export async function getStaffById(staffId) {
     if (docSnap.exists()) {
       return { id: docSnap.id, ...docSnap.data() };
     }
+    return null;
   } catch (err) {
     console.warn("Firestore getById error, fallback to local:", err.message);
   }

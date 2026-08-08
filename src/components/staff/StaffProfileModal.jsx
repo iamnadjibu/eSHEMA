@@ -6,7 +6,7 @@ import { getStaffMonthlyHours } from '../../services/attendanceService';
 import { parseStaffCode } from '../../utils/staffCodeGenerator';
 import InitialsAvatar from '../common/InitialsAvatar';
 
-export default function StaffProfileModal({ staff, isOpen, onClose, onUpdateStaff }) {
+export default function StaffProfileModal({ staff, isOpen, onClose, onUpdateStaff, currentUser }) {
   const [activeTab, setActiveTab] = useState('profile');
   const [performanceData, setPerformanceData] = useState(null);
   const [isEditingRating, setIsEditingRating] = useState(false);
@@ -222,12 +222,14 @@ export default function StaffProfileModal({ staff, isOpen, onClose, onUpdateStaf
                     {performanceData ? `Evaluated by ${performanceData.evaluatorEmail}` : 'No performance score entered by management.'}
                   </p>
                 </div>
-                <button 
-                  onClick={() => setIsEditingRating(!isEditingRating)}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-xl transition shadow-lg shadow-purple-600/30"
-                >
-                  {isEditingRating ? 'Cancel' : performanceData ? 'Edit Rating' : 'Assign Rating'}
-                </button>
+                {['super_admin', 'manager'].includes(currentUser?.role) && (
+                  <button 
+                    onClick={() => setIsEditingRating(!isEditingRating)}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-xl transition shadow-lg shadow-purple-600/30"
+                  >
+                    {isEditingRating ? 'Cancel' : performanceData ? 'Edit Rating' : 'Assign Rating'}
+                  </button>
+                )}
               </div>
 
               {isEditingRating ? (
