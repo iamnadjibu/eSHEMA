@@ -101,7 +101,16 @@ export default function UserApprovalView({ currentUser }) {
                       {user.fullName || 'User'}
                     </td>
                     <td className="p-4 font-mono text-slate-300 text-xs">
-                      {user.email}
+                      <div>{user.email}</div>
+                      {user.emailVerified ? (
+                        <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
+                          <CheckCircle2 className="w-3 h-3" /> Email Verified
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-amber-400 font-semibold flex items-center gap-1 mt-0.5">
+                          <AlertCircle className="w-3 h-3" /> Unverified
+                        </span>
+                      )}
                     </td>
                     <td className="p-4 text-xs capitalize text-slate-400">
                       {user.department || 'trainer'} • {user.branch || 'kigali'}

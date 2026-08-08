@@ -64,6 +64,7 @@ export async function getStaffByCode(staffCode) {
   const normalizedCode = staffCode.trim().toUpperCase();
 
   try {
+    // 1. Try querying staffCode in Firestore
     const q = query(collection(db, 'staff'), where('staffCode', '==', normalizedCode));
     const snapshot = await Promise.race([
       getDocs(q),
@@ -73,13 +74,19 @@ export async function getStaffByCode(staffCode) {
       const doc = snapshot.docs[0];
       return { id: doc.id, ...doc.data() };
     }
-    return null;
+
+    // 2. Try fetching document by ID directly in Firestore
+    const docRef = doc(db, 'staff', staffCode.trim());
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() };
+    }
   } catch (err) {
     console.warn("Firestore lookup error, using local fallback:", err.message);
   }
 
   const localList = getLocalStaffList();
-  return localList.find(s => s.staffCode.toUpperCase() === normalizedCode) || null;
+  return localList.find(s => s.staffCode.toUpperCase() === normalizedCode || s.id === staffCode.trim()) || null;
 }
 
 /**

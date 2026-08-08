@@ -79,6 +79,7 @@ export async function registerUser({ fullName, email, password, department = 'tr
     branch,
     role,
     approved,
+    emailVerified: isFirstUser, // Super Admin email auto-verified; others verified by Super Admin
     status,
     createdAt: new Date().toISOString()
   };
@@ -185,10 +186,11 @@ export async function getAllUsers() {
 /**
  * Super Admin approves or rejects a user
  */
-export async function approveUserStatus(uid, assignedRole, approved = true, actorEmail = 'admin@ksp.rw') {
+export async function approveUserStatus(uid, assignedRole, approved = true, actorEmail = 'admin@ksp.rw', emailVerified = true) {
   const updateData = {
     role: assignedRole,
     approved,
+    emailVerified,
     status: approved ? 'approved' : 'rejected',
     updatedAt: new Date().toISOString()
   };
@@ -209,7 +211,39 @@ export async function approveUserStatus(uid, assignedRole, approved = true, acto
   await createAuditLog({
     action: approved ? 'APPROVE_USER' : 'REJECT_USER',
     targetId: uid,
-    details: { assignedRole, approved },
+    details: { assignedRole, approved, emailVerified },
+    actorEmail
+  });
+
+  return true;
+}
+
+/**
+ * Super Admin manually verifies email of a user
+ */
+export async function verifyUserEmailByAdmin(uid, emailVerified = true, actorEmail = 'admin@ksp.rw') {
+  const updateData = {
+    emailVerified,
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    await updateDoc(doc(db, "users", uid), updateData);
+  } catch (e) {
+    console.warn("Firestore email verification update error:", e.message);
+  }
+
+  const localUsers = getLocalUsers();
+  const idx = localUsers.findIndex(u => u.uid === uid);
+  if (idx !== -1) {
+    localUsers[idx] = { ...localUsers[idx], ...updateData };
+    saveLocalUsers(localUsers);
+  }
+
+  await createAuditLog({
+    action: 'VERIFY_USER_EMAIL',
+    targetId: uid,
+    details: { emailVerified },
     actorEmail
   });
 

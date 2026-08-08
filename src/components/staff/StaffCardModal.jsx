@@ -13,8 +13,14 @@ export default function StaffCardModal({ staff, isOpen, onClose, onRegenerateCod
   const handleDownloadPNG = async () => {
     if (!cardRef.current) return;
     try {
-      const canvas = await html2canvas(cardRef.current, { scale: 3, useCORS: true });
-      const image = canvas.toDataURL("image/png");
+      const canvas = await html2canvas(cardRef.current, { 
+        scale: 4, 
+        useCORS: true, 
+        allowTaint: true,
+        backgroundColor: '#020617',
+        logging: false
+      });
+      const image = canvas.toDataURL("image/png", 1.0);
       const link = document.createElement("a");
       link.href = image;
       link.download = `KSP_Staff_Card_${staff.staffCode}.png`;
@@ -27,10 +33,16 @@ export default function StaffCardModal({ staff, isOpen, onClose, onRegenerateCod
   const handleDownloadPDF = async () => {
     if (!cardRef.current) return;
     try {
-      const canvas = await html2canvas(cardRef.current, { scale: 3, useCORS: true });
-      const imgData = canvas.toDataURL("image/png");
+      const canvas = await html2canvas(cardRef.current, { 
+        scale: 4, 
+        useCORS: true, 
+        allowTaint: true,
+        backgroundColor: '#020617',
+        logging: false
+      });
+      const imgData = canvas.toDataURL("image/png", 1.0);
       const pdf = new jsPDF({
-        orientation: "portrait",
+        orientation: "landscape",
         unit: "mm",
         format: [85.6, 53.98] // CR80 standard credit card size (mm)
       });
