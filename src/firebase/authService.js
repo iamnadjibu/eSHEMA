@@ -86,7 +86,12 @@ export async function loginUser(email, password) {
 
   try {
     const userCred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-    const uid = userCred.user.uid;
+    const authUser = userCred.user;
+    const uid = authUser.uid;
+
+    if (!authUser.emailVerified && normalizedEmail !== 'admin@ksp.rw' && normalizedEmail !== 'superadmin@ksp.rw') {
+      throw new Error("EMAIL_NOT_VERIFIED");
+    }
     
     // Fetch user profile directly from Firestore
     const userDoc = await getDoc(doc(db, "users", uid));
@@ -94,6 +99,7 @@ export async function loginUser(email, password) {
       userProfile = userDoc.data();
     }
   } catch (err) {
+    if (err.message === "EMAIL_NOT_VERIFIED") throw err;
     console.warn("Firebase Auth login error:", err.message);
   }
 
@@ -110,6 +116,10 @@ export async function loginUser(email, password) {
 
   if (!userProfile.approved && userProfile.role !== 'super_admin') {
     throw new Error("Your account is pending approval by the Super Admin. Please contact an administrator.");
+  }
+
+  if (userProfile.status === 'suspended') {
+    throw new Error("Your account has been suspended by the administrator.");
   }
 
   return userProfile;
@@ -136,6 +146,39 @@ export async function getAllUsers() {
     return snapshot.docs.map(d => ({ uid: d.id, ...d.data() }));
   }
   return [];
+}
+
+/**
+ * Resend verification email to the currently signed in user
+ */
+export async function resendVerificationEmail() {
+  if (auth.currentUser) {
+    await sendEmailVerification(auth.currentUser);
+    return true;
+  }
+  throw new Error("No user currently signed in to resend email.");
+}
+
+/**
+ * Update user status and role (Promote, Demote, Suspend, Restore)
+ */
+export async function updateUserStatusAndRole(uid, status, role, actorEmail) {
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    status,
+    role,
+    approved: status === 'approved',
+    updatedAt: new Date().toISOString()
+  });
+
+  await createAuditLog({
+    action: 'UPDATE_USER_STATUS',
+    targetId: uid,
+    details: { status, role },
+    actorEmail
+  });
+  
+  return true;
 }
 
 /**

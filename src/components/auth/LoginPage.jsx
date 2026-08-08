@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { LogIn, UserPlus, KeyRound, Mail, Lock, User, Building, ArrowRight, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
-import { loginUser, registerUser, resetUserPassword } from '../../firebase/authService';
+import { LogIn, UserPlus, KeyRound, Mail, Lock, User, Building, ArrowRight, AlertCircle, CheckCircle2, Sparkles, Send } from 'lucide-react';
+import { loginUser, registerUser, resetUserPassword, resendVerificationEmail } from '../../firebase/authService';
 
 export default function LoginPage({ onLoginSuccess }) {
   const [mode, setMode] = useState('login');
@@ -19,16 +19,35 @@ export default function LoginPage({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [needsVerification, setNeedsVerification] = useState(false);
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!loginEmail || !loginPassword) { setErrorMessage('Please enter both Email and Password.'); return; }
-    setLoading(true); setErrorMessage(''); setSuccessMessage('');
+    setLoading(true); setErrorMessage(''); setSuccessMessage(''); setNeedsVerification(false);
     try {
       const user = await loginUser(loginEmail, loginPassword);
       if (onLoginSuccess) onLoginSuccess(user);
     } catch (err) {
-      setErrorMessage(err.message || 'Login failed.');
+      if (err.message === 'EMAIL_NOT_VERIFIED') {
+        setErrorMessage('Your email address has not been verified. Please check your inbox.');
+        setNeedsVerification(true);
+      } else {
+        setErrorMessage(err.message || 'Login failed.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setLoading(true); setErrorMessage(''); setSuccessMessage('');
+    try {
+      await resendVerificationEmail();
+      setSuccessMessage('A new verification link has been sent to your email.');
+      setNeedsVerification(false);
+    } catch (err) {
+      setErrorMessage(err.message || 'Failed to resend verification email.');
     } finally {
       setLoading(false);
     }
@@ -94,9 +113,21 @@ export default function LoginPage({ onLoginSuccess }) {
         <div className="glass-panel rounded-[24px] p-7">
 
           {errorMessage && (
-            <div className="mb-5 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs flex items-center gap-2.5">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="mb-5 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 flex flex-col gap-3">
+              <div className="flex items-center gap-2.5 text-red-300 text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+              {needsVerification && (
+                <button 
+                  onClick={handleResendVerification}
+                  disabled={loading}
+                  className="w-full py-2 bg-red-500/20 hover:bg-red-500/30 text-red-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Resend Verification Link
+                </button>
+              )}
             </div>
           )}
           {successMessage && (
