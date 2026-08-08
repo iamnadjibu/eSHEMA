@@ -21,7 +21,8 @@ service cloud.firestore {
         request.auth.token.admin == true ||
         request.auth.token.email == 'admin@ksp.rw' ||
         request.auth.token.email == 'superadmin@ksp.rw' ||
-        request.auth.token.email == 'nadjibullahu@gmail.com'
+        request.auth.token.email == 'nadjibullahu@gmail.com' ||
+        request.auth.token.email == 'nadjibullah70@gmail.com'
       );
     }
 
