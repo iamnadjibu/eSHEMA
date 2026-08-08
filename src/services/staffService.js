@@ -39,21 +39,42 @@ function saveLocalStaffList(list) {
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
 }
 
+function sanitizeRecord(obj) {
+  const clean = {};
+  Object.keys(obj).forEach(key => {
+    clean[key] = obj[key] === undefined ? '' : obj[key];
+  });
+  return clean;
+}
+
 /**
  * Gets all staff members
  */
 export async function getAllStaff() {
+  let firestoreStaff = [];
   try {
     const staffCol = collection(db, 'staff');
     const snapshot = await Promise.race([
       getDocs(staffCol),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2500))
     ]);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    firestoreStaff = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (err) {
     console.warn("Firestore offline or permission pending, using local storage fallback:", err.message);
   }
-  return getLocalStaffList();
+
+  const localStaff = getLocalStaffList();
+  
+  // Merge Firestore staff and Local staff so offline or locally added records are seamlessly displayed
+  const map = new Map();
+  firestoreStaff.forEach(s => map.set(s.id || s.staffCode, s));
+  localStaff.forEach(s => {
+    if (!map.has(s.id || s.staffCode)) {
+      map.set(s.id || s.staffCode, s);
+    }
+  });
+
+  return Array.from(map.values());
 }
 
 /**
@@ -163,24 +184,24 @@ export async function createStaff(staffData, actorInfo = { email: 'system' }) {
 
   const internalId = `staff-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   
-  const newStaffRecord = {
+  const newStaffRecord = sanitizeRecord({
     id: internalId,
     staffCode,
     firstName: staffData.firstName,
     middleName: staffData.middleName || '',
     lastName: staffData.lastName,
-    gender: staffData.gender, // 'female' | 'male'
-    genderCode: staffData.genderCode, // '7' | '8'
-    nationality: staffData.nationality, // 'rwandan' | 'foreigner'
-    nationalityCode: staffData.nationalityCode, // '1' | '2'
-    department: staffData.department, // 'executive' | 'management' | 'trainer' | 'other'
-    departmentCode: staffData.departmentCode, // '1' | '2' | '3' | '4'
-    branch: staffData.branch, // 'kigali' | 'kayonza' | 'elsewhere'
-    branchCode: staffData.branchCode, // '1' | '2' | '3'
-    educationLevel: staffData.educationLevel,
-    educationCode: staffData.educationCode,
-    certificateRange: staffData.certificateRange,
-    certificateCode: staffData.certificateCode,
+    gender: staffData.gender || 'male', // 'female' | 'male'
+    genderCode: staffData.genderCode || '8', // '7' | '8'
+    nationality: staffData.nationality || 'rwandan', // 'rwandan' | 'foreigner'
+    nationalityCode: staffData.nationalityCode || '1', // '1' | '2'
+    department: staffData.department || 'trainer', // 'executive' | 'management' | 'trainer' | 'other'
+    departmentCode: staffData.departmentCode || '3', // '1' | '2' | '3' | '4'
+    branch: staffData.branch || 'kigali', // 'kigali' | 'kayonza' | 'elsewhere'
+    branchCode: staffData.branchCode || '1', // '1' | '2' | '3'
+    educationLevel: staffData.educationLevel || 'bachelor',
+    educationCode: staffData.educationCode || '00',
+    certificateRange: staffData.certificateRange || '0',
+    certificateCode: staffData.certificateCode || '0',
     employeeNumber,
     jobTitle: staffData.jobTitle,
     phone: staffData.phone || '',
@@ -192,7 +213,7 @@ export async function createStaff(staffData, actorInfo = { email: 'system' }) {
     notes: staffData.notes || '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
-  };
+  });
 
   // 1. Try writing to Firestore with 1.5s timeout race
   try {

@@ -1,8 +1,8 @@
 // KSP Classification Constants according to eshema.skills specification
 
 export const NATIONALITIES = {
-  '1': { code: '1', label: 'Rwandan' },
-  '2': { code: '2', label: 'Foreigner' }
+  '1': { code: '1', label: 'Rwandan', key: 'rwandan' },
+  '2': { code: '2', label: 'Foreigner', key: 'foreigner' }
 };
 
 export const DEPARTMENTS = {

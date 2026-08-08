@@ -59,12 +59,12 @@ export default function StaffCreationModal({ isOpen, onClose, onStaffCreated }) 
     try {
       const created = await createStaff({
         ...formData,
-        gender: GENDERS[formData.genderCode].key,
-        nationality: NATIONALITIES[formData.nationalityCode].key,
-        department: DEPARTMENTS[formData.departmentCode].key,
-        branch: BRANCHES[formData.branchCode].key,
-        educationLevel: EDUCATION_LEVELS[formData.educationCode].key,
-        certificateRange: CERTIFICATE_RANGES[formData.certificateCode].key
+        gender: GENDERS[formData.genderCode]?.key || 'male',
+        nationality: NATIONALITIES[formData.nationalityCode]?.key || 'rwandan',
+        department: DEPARTMENTS[formData.departmentCode]?.key || 'trainer',
+        branch: BRANCHES[formData.branchCode]?.key || 'kigali',
+        educationLevel: EDUCATION_LEVELS[formData.educationCode]?.key || 'bachelor',
+        certificateRange: CERTIFICATE_RANGES[formData.certificateCode]?.key || '0'
       });
 
       if (onStaffCreated) onStaffCreated(created);

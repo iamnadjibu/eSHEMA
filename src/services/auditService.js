@@ -49,18 +49,26 @@ export async function createAuditLog({ action, targetId, details, actorEmail = '
  * Retrieves audit logs
  */
 export async function getAuditLogs(maxCount = 100) {
+  let firestoreLogs = [];
   try {
     const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(maxCount));
     const snapshot = await Promise.race([
       getDocs(q),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2500))
     ]);
     if (!snapshot.empty) {
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      firestoreLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }
   } catch (err) {
     console.warn("Firestore audit log fetch error, using local fallback:", err.message);
   }
 
-  return getLocalAuditLogs().slice(0, maxCount);
+  const localLogs = getLocalAuditLogs();
+  const map = new Map();
+  firestoreLogs.forEach(l => map.set(l.id, l));
+  localLogs.forEach(l => {
+    if (!map.has(l.id)) map.set(l.id, l);
+  });
+
+  return Array.from(map.values()).slice(0, maxCount);
 }
