@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Printer, BarChart3, FileSpreadsheet, Calendar, Building, Award } from 'lucide-react';
 import { getAllStaff } from '../../services/staffService';
-import { getTodayAttendance } from '../../services/attendanceService';
+import { getTodayAttendance, getStaffMonthlyHours } from '../../services/attendanceService';
 import { calculateAttendanceMetrics, getPerformanceRating } from '../../services/performanceService';
 import { formatHoursMinutes } from '../../utils/timeUtils';
 
@@ -9,6 +9,7 @@ export default function ReportsView() {
   const [reportType, setReportType] = useState('summary');
   const [staffList, setStaffList] = useState([]);
   const [attendanceData, setAttendanceData] = useState([]);
+  const [monthlyHours, setMonthlyHours] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,6 +17,12 @@ export default function ReportsView() {
       setLoading(true);
       const staff = await getAllStaff();
       const attendance = await getTodayAttendance();
+      const now = new Date();
+      const hoursMap = {};
+      for (const s of staff) {
+        hoursMap[s.id] = await getStaffMonthlyHours(s.id, now.getFullYear(), now.getMonth() + 1);
+      }
+      setMonthlyHours(hoursMap);
       setStaffList(staff);
       setAttendanceData(attendance);
       setLoading(false);
@@ -27,14 +34,14 @@ export default function ReportsView() {
     const headers = ["Staff Code", "Name", "Department", "Branch", "Days Present", "Attendance Rating (/10)", "Performance Rating (/10)", "Total Hours Today"];
     const rows = staffList.map(s => {
       const att = attendanceData.find(a => a.staffId === s.id);
-      const attMetrics = calculateAttendanceMetrics(20, 22);
+      const attMetrics = calculateAttendanceMetrics(monthlyHours[s.id] || 0);
       const perf = getPerformanceRating(s.id);
       return [
         s.staffCode,
         `"${s.firstName} ${s.lastName}"`,
         s.department,
         s.branch,
-        "20/22",
+        `${monthlyHours[s.id] || 0}h`,
         `${attMetrics.rating}/10`,
         perf ? `${perf.overallPerformanceRating}/10` : "Not Rated",
         att ? formatHoursMinutes(att.totalMinutesToday) : "0h 00m"
@@ -112,7 +119,7 @@ export default function ReportsView() {
             <tbody className="divide-y divide-slate-800/60">
               {staffList.map(s => {
                 const att = attendanceData.find(a => a.staffId === s.id);
-                const attMetrics = calculateAttendanceMetrics(20, 22);
+                const attMetrics = calculateAttendanceMetrics(monthlyHours[s.id] || 0);
                 const perf = getPerformanceRating(s.id);
 
                 return (

@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { generateStaffCode } from '../utils/staffCodeGenerator';
-import { INITIAL_STAFF } from './initialData';
+
 import { createAuditLog } from './auditService';
 
 const LOCAL_STORAGE_KEY = 'eshema_staff_db';
@@ -23,13 +23,12 @@ const LOCAL_STORAGE_KEY = 'eshema_staff_db';
 function getLocalStaffList() {
   const data = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (!data) {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_STAFF));
-    return INITIAL_STAFF;
+    return [];
   }
   try {
     return JSON.parse(data);
   } catch (e) {
-    return INITIAL_STAFF;
+    return [];
   }
 }
 

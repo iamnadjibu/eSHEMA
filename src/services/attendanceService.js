@@ -326,3 +326,39 @@ export async function correctAttendanceSession({
 
   return true;
 }
+
+/**
+ * Gets actual total hours worked by a staff member in a specific month
+ */
+export async function getStaffMonthlyHours(staffId, year, month) {
+  try {
+    const monthStr = month < 10 ? `0${month}` : `${month}`;
+    const prefix = `${year}-${monthStr}`;
+    
+    // First try Firestore
+    try {
+      const q = query(collection(db, 'attendance'), where('staffId', '==', staffId));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        let totalMinutes = 0;
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.date && data.date.startsWith(prefix)) {
+            totalMinutes += (data.totalMinutesToday || 0);
+          }
+        });
+        return Math.round(totalMinutes / 60);
+      }
+    } catch (err) {
+      console.warn("Firestore error getting monthly hours:", err.message);
+    }
+    
+    // Fallback to local
+    const attendanceList = getLocalAttendance();
+    const monthlyRecords = attendanceList.filter(a => a.staffId === staffId && a.date && a.date.startsWith(prefix));
+    const totalMinutes = monthlyRecords.reduce((sum, a) => sum + (a.totalMinutesToday || 0), 0);
+    return Math.round(totalMinutes / 60);
+  } catch (err) {
+    return 0;
+  }
+}

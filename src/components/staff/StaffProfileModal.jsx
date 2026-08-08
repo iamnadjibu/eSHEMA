@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, User, Briefcase, Award, Clock, Star, RefreshCw, QrCode, Phone, Mail, Calendar, ShieldAlert } from 'lucide-react';
 import BarcodeGenerator from '../common/BarcodeGenerator';
 import { calculateAttendanceMetrics, getPerformanceRating, savePerformanceRating } from '../../services/performanceService';
+import { getStaffMonthlyHours } from '../../services/attendanceService';
 import { parseStaffCode } from '../../utils/staffCodeGenerator';
 import InitialsAvatar from '../common/InitialsAvatar';
 
@@ -17,6 +18,7 @@ export default function StaffProfileModal({ staff, isOpen, onClose, onUpdateStaf
     teamwork: 9,
     notes: ''
   });
+  const [actualHours, setActualHours] = useState(0);
 
   useEffect(() => {
     if (staff) {
@@ -25,13 +27,18 @@ export default function StaffProfileModal({ staff, isOpen, onClose, onUpdateStaf
       if (existing) {
         setRatingScores({ ...existing.scores, notes: existing.notes || '' });
       }
+      
+      const now = new Date();
+      getStaffMonthlyHours(staff.id, now.getFullYear(), now.getMonth() + 1).then(hours => {
+        setActualHours(hours);
+      });
     }
   }, [staff]);
 
   if (!isOpen || !staff) return null;
 
   const codeDetails = parseStaffCode(staff.staffCode);
-  const attendanceMetrics = calculateAttendanceMetrics(65);
+  const attendanceMetrics = calculateAttendanceMetrics(actualHours);
 
   const handleSaveRating = async (e) => {
     e.preventDefault();
