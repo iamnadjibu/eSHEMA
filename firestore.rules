@@ -30,7 +30,14 @@ service cloud.firestore {
     // Staff Collection
     match /staff/{staffId} {
       allow read: if isAuthenticated();
-      allow create, update: if isManager();
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isManager());
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isSuperAdmin() || (isAuthenticated() && request.auth.uid == userId);
       allow delete: if isSuperAdmin();
     }
 
