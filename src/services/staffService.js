@@ -7,37 +7,11 @@ import {
   updateDoc, 
   query, 
   where, 
-  runTransaction,
-  serverTimestamp 
+  runTransaction 
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { generateStaffCode } from '../utils/staffCodeGenerator';
-
 import { createAuditLog } from './auditService';
-
-const LOCAL_STORAGE_KEY = 'eshema_staff_db';
-
-/**
- * Helper to get local staff state fallback
- */
-function getLocalStaffList() {
-  const data = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (!data) {
-    return [];
-  }
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return [];
-  }
-}
-
-/**
- * Helper to save local staff state
- */
-function saveLocalStaffList(list) {
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
-}
 
 function sanitizeRecord(obj) {
   const clean = {};
@@ -48,37 +22,21 @@ function sanitizeRecord(obj) {
 }
 
 /**
- * Gets all staff members
+ * Gets all staff members directly from Firestore
  */
 export async function getAllStaff() {
-  let firestoreStaff = [];
   try {
     const staffCol = collection(db, 'staff');
-    const snapshot = await Promise.race([
-      getDocs(staffCol),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2500))
-    ]);
-    firestoreStaff = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const snapshot = await getDocs(staffCol);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (err) {
-    console.warn("Firestore offline or permission pending, using local storage fallback:", err.message);
+    console.error("Error fetching staff from Firestore:", err.message);
+    throw err;
   }
-
-  const localStaff = getLocalStaffList();
-  
-  // Merge Firestore staff and Local staff so offline or locally added records are seamlessly displayed
-  const map = new Map();
-  firestoreStaff.forEach(s => map.set(s.id || s.staffCode, s));
-  localStaff.forEach(s => {
-    if (!map.has(s.id || s.staffCode)) {
-      map.set(s.id || s.staffCode, s);
-    }
-  });
-
-  return Array.from(map.values());
 }
 
 /**
- * Finds staff by Staff Code (e.g. KSP-137-052-1025)
+ * Finds staff by Staff Code (e.g. KSP-137-052-1025) or Document ID directly in Firestore
  */
 export async function getStaffByCode(staffCode) {
   if (!staffCode) return null;
@@ -87,10 +45,7 @@ export async function getStaffByCode(staffCode) {
   try {
     // 1. Try querying staffCode in Firestore
     const q = query(collection(db, 'staff'), where('staffCode', '==', normalizedCode));
-    const snapshot = await Promise.race([
-      getDocs(q),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000))
-    ]);
+    const snapshot = await getDocs(q);
     if (!snapshot.empty) {
       const doc = snapshot.docs[0];
       return { id: doc.id, ...doc.data() };
@@ -103,34 +58,28 @@ export async function getStaffByCode(staffCode) {
       return { id: docSnap.id, ...docSnap.data() };
     }
   } catch (err) {
-    console.warn("Firestore lookup error, using local fallback:", err.message);
+    console.error("Firestore lookup error:", err.message);
   }
 
-  const localList = getLocalStaffList();
-  return localList.find(s => s.staffCode.toUpperCase() === normalizedCode || s.id === staffCode.trim()) || null;
+  return null;
 }
 
 /**
- * Finds staff by internal ID
+ * Finds staff by internal ID directly in Firestore
  */
 export async function getStaffById(staffId) {
   if (!staffId) return null;
   try {
     const docRef = doc(db, 'staff', staffId);
-    const docSnap = await Promise.race([
-      getDoc(docRef),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000))
-    ]);
+    const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       return { id: docSnap.id, ...docSnap.data() };
     }
-    return null;
   } catch (err) {
-    console.warn("Firestore getById error, fallback to local:", err.message);
+    console.error("Firestore getById error:", err.message);
   }
 
-  const localList = getLocalStaffList();
-  return localList.find(s => s.id === staffId) || null;
+  return null;
 }
 
 /**
@@ -142,19 +91,16 @@ export async function getNextEmployeeNumber(branchCode) {
 
   try {
     const counterRef = doc(db, 'counters', 'branch_counters');
-    const nextSeq = await Promise.race([
-      runTransaction(db, async (transaction) => {
-        const counterDoc = await transaction.get(counterRef);
-        let currentVal = 0;
-        if (counterDoc.exists()) {
-          currentVal = counterDoc.data()[branchKey] || 0;
-        }
-        const newVal = currentVal + 1;
-        transaction.set(counterRef, { [branchKey]: newVal }, { merge: true });
-        return newVal;
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000))
-    ]);
+    const nextSeq = await runTransaction(db, async (transaction) => {
+      const counterDoc = await transaction.get(counterRef);
+      let currentVal = 0;
+      if (counterDoc.exists()) {
+        currentVal = counterDoc.data()[branchKey] || 0;
+      }
+      const newVal = currentVal + 1;
+      transaction.set(counterRef, { [branchKey]: newVal }, { merge: true });
+      return newVal;
+    });
     return nextSeq;
   } catch (err) {
     console.warn("Firestore counter transaction unavailable, calculating from existing staff records:", err.message);
@@ -166,7 +112,7 @@ export async function getNextEmployeeNumber(branchCode) {
 }
 
 /**
- * Creates a new Staff record with auto-generated KSP Staff Code & Barcode ID
+ * Creates a new Staff record in Firestore with auto-generated KSP Staff Code & Barcode ID
  */
 export async function createStaff(staffData, actorInfo = { email: 'system' }) {
   const nextSeq = await getNextEmployeeNumber(staffData.branchCode);
@@ -190,14 +136,14 @@ export async function createStaff(staffData, actorInfo = { email: 'system' }) {
     firstName: staffData.firstName,
     middleName: staffData.middleName || '',
     lastName: staffData.lastName,
-    gender: staffData.gender || 'male', // 'female' | 'male'
-    genderCode: staffData.genderCode || '8', // '7' | '8'
-    nationality: staffData.nationality || 'rwandan', // 'rwandan' | 'foreigner'
-    nationalityCode: staffData.nationalityCode || '1', // '1' | '2'
-    department: staffData.department || 'trainer', // 'executive' | 'management' | 'trainer' | 'other'
-    departmentCode: staffData.departmentCode || '3', // '1' | '2' | '3' | '4'
-    branch: staffData.branch || 'kigali', // 'kigali' | 'kayonza' | 'elsewhere'
-    branchCode: staffData.branchCode || '1', // '1' | '2' | '3'
+    gender: staffData.gender || 'male',
+    genderCode: staffData.genderCode || '8',
+    nationality: staffData.nationality || 'rwandan',
+    nationalityCode: staffData.nationalityCode || '1',
+    department: staffData.department || 'trainer',
+    departmentCode: staffData.departmentCode || '3',
+    branch: staffData.branch || 'kigali',
+    branchCode: staffData.branchCode || '1',
     educationLevel: staffData.educationLevel || 'bachelor',
     educationCode: staffData.educationCode || '00',
     certificateRange: staffData.certificateRange || '0',
@@ -215,22 +161,10 @@ export async function createStaff(staffData, actorInfo = { email: 'system' }) {
     updatedAt: new Date().toISOString()
   });
 
-  // 1. Try writing to Firestore with 1.5s timeout race
-  try {
-    await Promise.race([
-      setDoc(doc(db, 'staff', internalId), newStaffRecord),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore write timeout')), 1500))
-    ]);
-  } catch (err) {
-    console.warn("Firestore write error or timeout, saved locally:", err.message);
-  }
+  // Write directly to Firestore
+  await setDoc(doc(db, 'staff', internalId), newStaffRecord);
 
-  // 2. Save locally for guaranteed immediate sync
-  const localList = getLocalStaffList();
-  localList.unshift(newStaffRecord);
-  saveLocalStaffList(localList);
-
-  // 3. Audit Log
+  // Audit Log
   await createAuditLog({
     action: 'CREATE_STAFF',
     targetId: internalId,
@@ -247,7 +181,7 @@ export async function createStaff(staffData, actorInfo = { email: 'system' }) {
 }
 
 /**
- * Updates staff information and optionally regenerates Staff Code if classification changes
+ * Updates staff information in Firestore
  */
 export async function updateStaff(staffId, updateFields, actorInfo = { email: 'system' }) {
   const existingStaff = await getStaffById(staffId);
@@ -256,7 +190,6 @@ export async function updateStaff(staffId, updateFields, actorInfo = { email: 's
   let updatedStaffCode = existingStaff.staffCode;
   let codeRegenerated = false;
 
-  // Check if classification fields affecting staffCode have changed
   const needCodeRegeneration = (
     (updateFields.nationalityCode && updateFields.nationalityCode !== existingStaff.nationalityCode) ||
     (updateFields.departmentCode && updateFields.departmentCode !== existingStaff.departmentCode) ||
@@ -275,7 +208,6 @@ export async function updateStaff(staffId, updateFields, actorInfo = { email: 's
     const cCode = updateFields.certificateCode || existingStaff.certificateCode;
     const bCode = updateFields.branchCode || existingStaff.branchCode;
 
-    // If branch changed, generate new sequence number for new branch
     let empNum = existingStaff.employeeNumber;
     if (updateFields.branchCode && updateFields.branchCode !== existingStaff.branchCode) {
       empNum = await getNextEmployeeNumber(bCode);
@@ -294,27 +226,15 @@ export async function updateStaff(staffId, updateFields, actorInfo = { email: 's
     updateFields.employeeNumber = empNum;
   }
 
-  const updatedRecord = {
+  const updatedRecord = sanitizeRecord({
     ...existingStaff,
     ...updateFields,
     staffCode: updatedStaffCode,
     updatedAt: new Date().toISOString()
-  };
+  });
 
-  // Firestore update
-  try {
-    await updateDoc(doc(db, 'staff', staffId), updatedRecord);
-  } catch (err) {
-    console.warn("Firestore update error, updating local storage:", err.message);
-  }
-
-  // Local storage update
-  const localList = getLocalStaffList();
-  const index = localList.findIndex(s => s.id === staffId);
-  if (index !== -1) {
-    localList[index] = updatedRecord;
-    saveLocalStaffList(localList);
-  }
+  // Direct Firestore update
+  await updateDoc(doc(db, 'staff', staffId), updatedRecord);
 
   // Audit log
   await createAuditLog({

@@ -1,21 +1,6 @@
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import { createAuditLog } from './auditService';
-
-const RATINGS_LOCAL_KEY = 'eshema_performance_ratings';
-
-function getLocalRatings() {
-  const data = localStorage.getItem(RATINGS_LOCAL_KEY);
-  if (!data) return {};
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return {};
-  }
-}
-
-function saveLocalRatings(ratingsObj) {
-  localStorage.setItem(RATINGS_LOCAL_KEY, JSON.stringify(ratingsObj));
-}
-
 import { getExpectedHoursForMonth } from '../utils/timeUtils';
 
 /**
@@ -43,16 +28,25 @@ export function calculateAttendanceMetrics(actualHoursWorked = 65, year = 2026, 
 }
 
 /**
- * Gets Performance Rating for a staff member for a specific month
+ * Gets Performance Rating for a staff member for a specific month directly from Firestore
  */
-export function getPerformanceRating(staffId, monthYear = '2026-08') {
-  const allRatings = getLocalRatings();
+export async function getPerformanceRating(staffId, monthYear = '2026-08') {
+  if (!staffId) return null;
   const key = `${staffId}_${monthYear}`;
-  return allRatings[key] || null;
+  try {
+    const docRef = doc(db, 'performanceRatings', key);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
+  } catch (err) {
+    console.warn("Firestore getPerformanceRating error:", err.message);
+  }
+  return null;
 }
 
 /**
- * Saves/Updates Performance Rating for a staff member
+ * Saves/Updates Performance Rating for a staff member directly in Firestore
  */
 export async function savePerformanceRating({
   staffId,
@@ -69,7 +63,9 @@ export async function savePerformanceRating({
     ((punctuality + productivity + professionalism + qualityOfWork + teamwork) / 5).toFixed(1)
   );
 
+  const key = `${staffId}_${monthYear}`;
   const ratingRecord = {
+    id: key,
     staffId,
     monthYear,
     scores: {
@@ -86,10 +82,8 @@ export async function savePerformanceRating({
     updatedAt: new Date().toISOString()
   };
 
-  const allRatings = getLocalRatings();
-  const key = `${staffId}_${monthYear}`;
-  allRatings[key] = ratingRecord;
-  saveLocalRatings(allRatings);
+  // Direct Firestore write
+  await setDoc(doc(db, 'performanceRatings', key), ratingRecord);
 
   await createAuditLog({
     action: 'SAVE_PERFORMANCE_RATING',

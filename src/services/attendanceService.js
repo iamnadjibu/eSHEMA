@@ -10,56 +10,18 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { getTodayDateString, formatTimeString, calculateMinutes, formatHoursMinutes } from '../utils/timeUtils';
-import { getStaffByCode, getStaffById, getAllStaff } from './staffService';
+import { getStaffByCode, getAllStaff } from './staffService';
 import { createAuditLog } from './auditService';
 
-const ATTENDANCE_LOCAL_KEY = 'eshema_attendance_db';
-const SESSIONS_LOCAL_KEY = 'eshema_sessions_db';
-
 /**
- * Gets local attendance records
- */
-function getLocalAttendance() {
-  const data = localStorage.getItem(ATTENDANCE_LOCAL_KEY);
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return [];
-  }
-}
-
-/**
- * Gets local sessions records
- */
-function getLocalSessions() {
-  const data = localStorage.getItem(SESSIONS_LOCAL_KEY);
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return [];
-  }
-}
-
-function saveLocalAttendance(list) {
-  localStorage.setItem(ATTENDANCE_LOCAL_KEY, JSON.stringify(list));
-}
-
-function saveLocalSessions(list) {
-  localStorage.setItem(SESSIONS_LOCAL_KEY, JSON.stringify(list));
-}
-
-/**
- * Process a barcode scan on the ATTENDANCE SCANNER page.
- * Uses alternating IN / OUT session logic.
+ * Process a barcode scan on the ATTENDANCE SCANNER page using 100% pure Firestore
  */
 export async function processAttendanceScan(staffCode, operatorEmail = 'scanner-station') {
   if (!staffCode) {
     throw new Error('No barcode scanned');
   }
 
-  // 1. Find staff member
+  // 1. Find staff member in Firestore
   const staff = await getStaffByCode(staffCode);
   if (!staff) {
     throw new Error('Staff ID not recognized. Invalid or unknown barcode.');
@@ -74,12 +36,21 @@ export async function processAttendanceScan(staffCode, operatorEmail = 'scanner-
   const nowIso = now.toISOString();
   const timeFormatted = formatTimeString(now);
 
-  // 2. Fetch today's attendance record and sessions for this staff
-  const attendanceList = getLocalAttendance();
-  const sessionsList = getLocalSessions();
+  // 2. Fetch today's attendance record and sessions for this staff from Firestore
+  const dailyDocId = `${staff.id}_${todayDate}`;
+  const dailyRef = doc(db, 'attendance', dailyDocId);
+  const dailySnap = await getDoc(dailyRef);
+  let dailyRecord = dailySnap.exists() ? dailySnap.data() : null;
 
-  let dailyRecord = attendanceList.find(a => a.staffId === staff.id && a.date === todayDate);
-  const openSessionIndex = sessionsList.findIndex(s => s.staffId === staff.id && s.date === todayDate && s.status === 'open');
+  const sessionsQuery = query(
+    collection(db, 'attendanceSessions'),
+    where('staffId', '==', staff.id),
+    where('date', '==', todayDate)
+  );
+  const sessionsSnap = await getDocs(sessionsQuery);
+  const sessionsList = sessionsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const activeSession = sessionsList.find(s => s.status === 'open');
 
   let scanType = 'IN';
   let currentSessionDuration = '0h 00m';
@@ -88,8 +59,9 @@ export async function processAttendanceScan(staffCode, operatorEmail = 'scanner-
   if (!dailyRecord) {
     // 1st scan of the day -> CLOCK IN
     scanType = 'IN';
+    const newSessionId = `sess-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const newSession = {
-      id: `sess-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: newSessionId,
       staffId: staff.id,
       staffCode: staff.staffCode,
       date: todayDate,
@@ -100,10 +72,8 @@ export async function processAttendanceScan(staffCode, operatorEmail = 'scanner-
       corrected: false
     };
 
-    sessionsList.push(newSession);
-
     dailyRecord = {
-      id: `${staff.id}_${todayDate}`,
+      id: dailyDocId,
       staffId: staff.id,
       staffCode: staff.staffCode,
       staffName: `${staff.firstName} ${staff.lastName}`,
@@ -120,34 +90,47 @@ export async function processAttendanceScan(staffCode, operatorEmail = 'scanner-
       updatedAt: nowIso
     };
 
-    attendanceList.push(dailyRecord);
+    await setDoc(doc(db, 'attendanceSessions', newSessionId), newSession);
+    await setDoc(dailyRef, dailyRecord);
 
-  } else if (openSessionIndex !== -1) {
+  } else if (activeSession) {
     // Open session exists -> CLOCK OUT
     scanType = 'OUT';
-    const activeSession = sessionsList[openSessionIndex];
     const sessionMins = calculateMinutes(activeSession.clockIn, nowIso);
     
-    activeSession.clockOut = nowIso;
-    activeSession.durationMinutes = sessionMins;
-    activeSession.status = 'closed';
+    const updatedActiveSession = {
+      ...activeSession,
+      clockOut: nowIso,
+      durationMinutes: sessionMins,
+      status: 'closed'
+    };
 
     currentSessionDuration = formatHoursMinutes(sessionMins);
 
-    const closedSessions = sessionsList.filter(s => s.staffId === staff.id && s.date === todayDate && s.status === 'closed');
-    updatedTotalMinutes = closedSessions.reduce((acc, s) => acc + (s.durationMinutes || 0), 0);
+    const closedMins = sessionsList
+      .filter(s => s.id !== activeSession.id && s.status === 'closed')
+      .reduce((acc, s) => acc + (s.durationMinutes || 0), 0);
 
-    dailyRecord.lastScan = nowIso;
-    dailyRecord.currentStatus = 'outside';
-    dailyRecord.totalMinutesToday = updatedTotalMinutes;
-    dailyRecord.hasOpenSession = false;
-    dailyRecord.updatedAt = nowIso;
+    updatedTotalMinutes = closedMins + sessionMins;
+
+    dailyRecord = {
+      ...dailyRecord,
+      lastScan: nowIso,
+      currentStatus: 'outside',
+      totalMinutesToday: updatedTotalMinutes,
+      hasOpenSession: false,
+      updatedAt: nowIso
+    };
+
+    await setDoc(doc(db, 'attendanceSessions', activeSession.id), updatedActiveSession);
+    await setDoc(dailyRef, dailyRecord);
 
   } else {
     // No open session exists -> Next scan -> CLOCK IN
     scanType = 'IN';
+    const newSessionId = `sess-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const newSession = {
-      id: `sess-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: newSessionId,
       staffId: staff.id,
       staffCode: staff.staffCode,
       date: todayDate,
@@ -158,26 +141,24 @@ export async function processAttendanceScan(staffCode, operatorEmail = 'scanner-
       corrected: false
     };
 
-    sessionsList.push(newSession);
+    const closedMins = sessionsList
+      .filter(s => s.status === 'closed')
+      .reduce((acc, s) => acc + (s.durationMinutes || 0), 0);
 
-    const closedSessions = sessionsList.filter(s => s.staffId === staff.id && s.date === todayDate && s.status === 'closed');
-    updatedTotalMinutes = closedSessions.reduce((acc, s) => acc + (s.durationMinutes || 0), 0);
+    updatedTotalMinutes = closedMins;
 
-    dailyRecord.lastScan = nowIso;
-    dailyRecord.currentStatus = 'working';
-    dailyRecord.sessionsCount = (dailyRecord.sessionsCount || 0) + 1;
-    dailyRecord.hasOpenSession = true;
-    dailyRecord.updatedAt = nowIso;
+    dailyRecord = {
+      ...dailyRecord,
+      lastScan: nowIso,
+      currentStatus: 'working',
+      sessionsCount: (dailyRecord.sessionsCount || 0) + 1,
+      hasOpenSession: true,
+      updatedAt: nowIso
+    };
+
+    await setDoc(doc(db, 'attendanceSessions', newSessionId), newSession);
+    await setDoc(dailyRef, dailyRecord);
   }
-
-  saveLocalAttendance(attendanceList);
-  saveLocalSessions(sessionsList);
-
-  // Firestore async write with 1s timeout race
-  Promise.race([
-    setDoc(doc(db, 'attendance', dailyRecord.id), dailyRecord),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 1000))
-  ]).catch(e => console.warn("Firestore sync skipped:", e.message));
 
   return {
     success: true,
@@ -193,13 +174,29 @@ export async function processAttendanceScan(staffCode, operatorEmail = 'scanner-
 }
 
 /**
- * Gets attendance records for today or date range
+ * Gets attendance records for today directly from Firestore
  */
 export async function getTodayAttendance(targetDate = getTodayDateString()) {
   const rawStaff = await getAllStaff();
   const allStaff = Array.isArray(rawStaff) ? rawStaff : [];
-  const attendanceList = getLocalAttendance().filter(a => a.date === targetDate);
-  const sessionsList = getLocalSessions().filter(s => s.date === targetDate);
+
+  let attendanceList = [];
+  try {
+    const qAtt = query(collection(db, 'attendance'), where('date', '==', targetDate));
+    const attSnap = await getDocs(qAtt);
+    attendanceList = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.error("Error getting attendance records:", err.message);
+  }
+
+  let sessionsList = [];
+  try {
+    const qSess = query(collection(db, 'attendanceSessions'), where('date', '==', targetDate));
+    const sessSnap = await getDocs(qSess);
+    sessionsList = sessSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.error("Error getting attendance sessions:", err.message);
+  }
 
   // Map staff to attendance status
   const mapped = allStaff.map(staff => {
@@ -237,9 +234,8 @@ export async function getTodayAttendance(targetDate = getTodayDateString()) {
   return mapped;
 }
 
-
 /**
- * Manual attendance correction by authorized manager
+ * Manual attendance correction in Firestore
  */
 export async function correctAttendanceSession({
   staffId,
@@ -254,33 +250,41 @@ export async function correctAttendanceSession({
     throw new Error('A detailed reason (minimum 5 characters) is mandatory for attendance corrections.');
   }
 
-  const sessionsList = getLocalSessions();
-  const sessionIndex = sessionsList.findIndex(s => s.id === sessionId);
-
   let oldVal = {};
   let newVal = {};
 
-  if (sessionIndex !== -1) {
-    const session = sessionsList[sessionIndex];
+  const sessRef = doc(db, 'attendanceSessions', sessionId);
+  const sessSnap = await getDoc(sessRef);
+
+  if (sessSnap.exists()) {
+    const session = sessSnap.data();
     oldVal = { clockIn: session.clockIn, clockOut: session.clockOut };
     
-    session.clockIn = newClockIn || session.clockIn;
-    session.clockOut = newClockOut || session.clockOut;
-    
-    if (session.clockIn && session.clockOut) {
-      session.durationMinutes = calculateMinutes(session.clockIn, session.clockOut);
-      session.status = 'closed';
-    } else {
-      session.status = 'open';
-      session.durationMinutes = 0;
+    const clockIn = newClockIn || session.clockIn;
+    const clockOut = newClockOut || session.clockOut;
+    let durationMinutes = 0;
+    let status = 'open';
+
+    if (clockIn && clockOut) {
+      durationMinutes = calculateMinutes(clockIn, clockOut);
+      status = 'closed';
     }
-    session.corrected = true;
-    newVal = { clockIn: session.clockIn, clockOut: session.clockOut };
+
+    const updatedSession = {
+      ...session,
+      clockIn,
+      clockOut,
+      durationMinutes,
+      status,
+      corrected: true
+    };
+    await setDoc(sessRef, updatedSession);
+    newVal = { clockIn, clockOut };
   } else {
     // Create new corrected session
     const durationMins = (newClockIn && newClockOut) ? calculateMinutes(newClockIn, newClockOut) : 0;
     const newSess = {
-      id: `sess-corrected-${Date.now()}`,
+      id: sessionId || `sess-corrected-${Date.now()}`,
       staffId,
       date,
       clockIn: newClockIn,
@@ -289,25 +293,32 @@ export async function correctAttendanceSession({
       status: (newClockIn && newClockOut) ? 'closed' : 'open',
       corrected: true
     };
-    sessionsList.push(newSess);
+    await setDoc(doc(db, 'attendanceSessions', newSess.id), newSess);
     newVal = { clockIn: newClockIn, clockOut: newClockOut };
   }
 
-  saveLocalSessions(sessionsList);
+  // Recalculate daily attendance total in Firestore
+  const qSess = query(
+    collection(db, 'attendanceSessions'),
+    where('staffId', '==', staffId),
+    where('date', '==', date)
+  );
+  const allDaySessSnap = await getDocs(qSess);
+  const staffDaySessions = allDaySessSnap.docs.map(d => d.data());
 
-  // Recalculate daily attendance total
-  const attendanceList = getLocalAttendance();
-  const attIndex = attendanceList.findIndex(a => a.staffId === staffId && a.date === date);
-
-  const staffDaySessions = sessionsList.filter(s => s.staffId === staffId && s.date === date);
   const totalMins = staffDaySessions.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
   const hasOpen = staffDaySessions.some(s => s.status === 'open');
 
-  if (attIndex !== -1) {
-    attendanceList[attIndex].totalMinutesToday = totalMins;
-    attendanceList[attIndex].hasOpenSession = hasOpen;
-    attendanceList[attIndex].currentStatus = hasOpen ? 'working' : 'outside';
-    saveLocalAttendance(attendanceList);
+  const dailyDocId = `${staffId}_${date}`;
+  const dailyRef = doc(db, 'attendance', dailyDocId);
+  const dailySnap = await getDoc(dailyRef);
+  if (dailySnap.exists()) {
+    await updateDoc(dailyRef, {
+      totalMinutesToday: totalMins,
+      hasOpenSession: hasOpen,
+      currentStatus: hasOpen ? 'working' : 'outside',
+      updatedAt: new Date().toISOString()
+    });
   }
 
   // Record Audit Log
@@ -328,37 +339,28 @@ export async function correctAttendanceSession({
 }
 
 /**
- * Gets actual total hours worked by a staff member in a specific month
+ * Gets actual total hours worked by a staff member in a specific month directly from Firestore
  */
 export async function getStaffMonthlyHours(staffId, year, month) {
   try {
     const monthStr = month < 10 ? `0${month}` : `${month}`;
     const prefix = `${year}-${monthStr}`;
     
-    // First try Firestore
-    try {
-      const q = query(collection(db, 'attendance'), where('staffId', '==', staffId));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        let totalMinutes = 0;
-        snapshot.docs.forEach(doc => {
-          const data = doc.data();
-          if (data.date && data.date.startsWith(prefix)) {
-            totalMinutes += (data.totalMinutesToday || 0);
-          }
-        });
-        return Math.round(totalMinutes / 60);
-      }
-    } catch (err) {
-      console.warn("Firestore error getting monthly hours:", err.message);
+    const q = query(collection(db, 'attendance'), where('staffId', '==', staffId));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      let totalMinutes = 0;
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.date && data.date.startsWith(prefix)) {
+          totalMinutes += (data.totalMinutesToday || 0);
+        }
+      });
+      return Math.round(totalMinutes / 60);
     }
-    
-    // Fallback to local
-    const attendanceList = getLocalAttendance();
-    const monthlyRecords = attendanceList.filter(a => a.staffId === staffId && a.date && a.date.startsWith(prefix));
-    const totalMinutes = monthlyRecords.reduce((sum, a) => sum + (a.totalMinutesToday || 0), 0);
-    return Math.round(totalMinutes / 60);
   } catch (err) {
-    return 0;
+    console.warn("Firestore error getting monthly hours:", err.message);
   }
+  
+  return 0;
 }

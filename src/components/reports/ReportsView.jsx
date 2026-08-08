@@ -9,7 +9,7 @@ export default function ReportsView() {
   const [reportType, setReportType] = useState('summary');
   const [staffList, setStaffList] = useState([]);
   const [attendanceData, setAttendanceData] = useState([]);
-  const [monthlyHours, setMonthlyHours] = useState({});
+  const [performanceMap, setPerformanceMap] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,10 +19,13 @@ export default function ReportsView() {
       const attendance = await getTodayAttendance();
       const now = new Date();
       const hoursMap = {};
+      const perfMap = {};
       for (const s of staff) {
         hoursMap[s.id] = await getStaffMonthlyHours(s.id, now.getFullYear(), now.getMonth() + 1);
+        perfMap[s.id] = await getPerformanceRating(s.id);
       }
       setMonthlyHours(hoursMap);
+      setPerformanceMap(perfMap);
       setStaffList(staff);
       setAttendanceData(attendance);
       setLoading(false);
@@ -35,7 +38,7 @@ export default function ReportsView() {
     const rows = staffList.map(s => {
       const att = attendanceData.find(a => a.staffId === s.id);
       const attMetrics = calculateAttendanceMetrics(monthlyHours[s.id] || 0);
-      const perf = getPerformanceRating(s.id);
+      const perf = performanceMap[s.id];
       return [
         s.staffCode,
         `"${s.firstName} ${s.lastName}"`,
@@ -120,7 +123,7 @@ export default function ReportsView() {
               {staffList.map(s => {
                 const att = attendanceData.find(a => a.staffId === s.id);
                 const attMetrics = calculateAttendanceMetrics(monthlyHours[s.id] || 0);
-                const perf = getPerformanceRating(s.id);
+                const perf = performanceMap[s.id];
 
                 return (
                   <tr key={s.id} className="hover:bg-slate-800/40 transition">

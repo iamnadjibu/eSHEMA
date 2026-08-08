@@ -1,26 +1,8 @@
 import { collection, addDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
-const AUDIT_LOCAL_STORAGE_KEY = 'eshema_audit_logs';
-
-function getLocalAuditLogs() {
-  const data = localStorage.getItem(AUDIT_LOCAL_STORAGE_KEY);
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return [];
-  }
-}
-
-function saveLocalAuditLog(log) {
-  const logs = getLocalAuditLogs();
-  logs.unshift(log);
-  localStorage.setItem(AUDIT_LOCAL_STORAGE_KEY, JSON.stringify(logs.slice(0, 500))); // Keep last 500
-}
-
 /**
- * Creates an audit log record
+ * Creates an audit log record directly in Firestore
  */
 export async function createAuditLog({ action, targetId, details, actorEmail = 'operator' }) {
   const auditEntry = {
@@ -33,42 +15,27 @@ export async function createAuditLog({ action, targetId, details, actorEmail = '
   };
 
   try {
-    await Promise.race([
-      addDoc(collection(db, 'auditLogs'), auditEntry),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2000))
-    ]);
+    await addDoc(collection(db, 'auditLogs'), auditEntry);
   } catch (err) {
-    console.warn("Firestore audit log write error, storing locally:", err.message);
+    console.warn("Firestore audit log write error:", err.message);
   }
 
-  saveLocalAuditLog(auditEntry);
   return auditEntry;
 }
 
 /**
- * Retrieves audit logs
+ * Retrieves audit logs directly from Firestore
  */
 export async function getAuditLogs(maxCount = 100) {
-  let firestoreLogs = [];
   try {
     const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(maxCount));
-    const snapshot = await Promise.race([
-      getDocs(q),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 2500))
-    ]);
+    const snapshot = await getDocs(q);
     if (!snapshot.empty) {
-      firestoreLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }
   } catch (err) {
-    console.warn("Firestore audit log fetch error, using local fallback:", err.message);
+    console.warn("Firestore audit log fetch error:", err.message);
   }
 
-  const localLogs = getLocalAuditLogs();
-  const map = new Map();
-  firestoreLogs.forEach(l => map.set(l.id, l));
-  localLogs.forEach(l => {
-    if (!map.has(l.id)) map.set(l.id, l);
-  });
-
-  return Array.from(map.values()).slice(0, maxCount);
+  return [];
 }

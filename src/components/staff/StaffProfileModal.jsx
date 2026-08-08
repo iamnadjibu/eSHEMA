@@ -22,11 +22,12 @@ export default function StaffProfileModal({ staff, isOpen, onClose, onUpdateStaf
 
   useEffect(() => {
     if (staff) {
-      const existing = getPerformanceRating(staff.id);
-      setPerformanceData(existing);
-      if (existing) {
-        setRatingScores({ ...existing.scores, notes: existing.notes || '' });
-      }
+      getPerformanceRating(staff.id).then(existing => {
+        setPerformanceData(existing);
+        if (existing) {
+          setRatingScores({ ...existing.scores, notes: existing.notes || '' });
+        }
+      });
       
       const now = new Date();
       getStaffMonthlyHours(staff.id, now.getFullYear(), now.getMonth() + 1).then(hours => {

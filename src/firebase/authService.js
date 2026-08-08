@@ -3,8 +3,7 @@ import {
   createUserWithEmailAndPassword, 
   sendPasswordResetEmail, 
   sendEmailVerification, 
-  signOut, 
-  onAuthStateChanged 
+  signOut 
 } from "firebase/auth";
 import { 
   doc, 
@@ -12,31 +11,13 @@ import {
   setDoc, 
   getDocs, 
   collection, 
-  query, 
-  where, 
   updateDoc 
 } from "firebase/firestore";
 import { auth, db } from "./config";
 import { createAuditLog } from "../services/auditService";
 
-const LOCAL_USERS_KEY = 'eshema_registered_users';
-
-function getLocalUsers() {
-  const data = localStorage.getItem(LOCAL_USERS_KEY);
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch (e) {
-    return [];
-  }
-}
-
-function saveLocalUsers(list) {
-  localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(list));
-}
-
 /**
- * Register a new user
+ * Register a new user and save directly to Firestore 'users' collection
  */
 export async function registerUser({ fullName, email, password, department = 'trainer', branch = 'kigali', requestedRole = 'staff' }) {
   const normalizedEmail = email.trim().toLowerCase();
@@ -47,8 +28,7 @@ export async function registerUser({ fullName, email, password, department = 'tr
     const usersSnap = await getDocs(collection(db, "users"));
     isFirstUser = usersSnap.empty;
   } catch (e) {
-    const localUsers = getLocalUsers();
-    isFirstUser = localUsers.length === 0;
+    console.warn("Firestore users query error:", e.message);
   }
 
   // 2. Firebase Auth registration
@@ -64,7 +44,7 @@ export async function registerUser({ fullName, email, password, department = 'tr
       await sendEmailVerification(authUser);
     }
   } catch (err) {
-    console.warn("Firebase auth creation fallback:", err.message);
+    console.warn("Firebase auth creation notice:", err.message);
   }
 
   const role = isFirstUser ? 'super_admin' : requestedRole;
@@ -84,17 +64,8 @@ export async function registerUser({ fullName, email, password, department = 'tr
     createdAt: new Date().toISOString()
   };
 
-  // Save to Firestore
-  try {
-    await setDoc(doc(db, "users", uid), userDocData);
-  } catch (e) {
-    console.warn("Firestore user record save fallback:", e.message);
-  }
-
-  // Save locally
-  const localUsers = getLocalUsers();
-  localUsers.push(userDocData);
-  saveLocalUsers(localUsers);
+  // Save directly to Firestore
+  await setDoc(doc(db, "users", uid), userDocData);
 
   await createAuditLog({
     action: isFirstUser ? 'REGISTER_SUPER_ADMIN' : 'REGISTER_USER',
@@ -107,7 +78,7 @@ export async function registerUser({ fullName, email, password, department = 'tr
 }
 
 /**
- * Login user
+ * Login user and fetch user profile directly from Firestore
  */
 export async function loginUser(email, password) {
   const normalizedEmail = email.trim().toLowerCase();
@@ -117,23 +88,17 @@ export async function loginUser(email, password) {
     const userCred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
     const uid = userCred.user.uid;
     
-    // Fetch user profile from Firestore
+    // Fetch user profile directly from Firestore
     const userDoc = await getDoc(doc(db, "users", uid));
     if (userDoc.exists()) {
       userProfile = userDoc.data();
     }
   } catch (err) {
-    console.warn("Firebase Auth login fallback:", err.message);
-  }
-
-  // Local fallback check if Firestore is uninitialized
-  if (!userProfile) {
-    const localUsers = getLocalUsers();
-    userProfile = localUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+    console.warn("Firebase Auth login error:", err.message);
   }
 
   if (!userProfile) {
-    // Demo account check for quick testing
+    // Demo account check for quick testing if database isn't initialized yet
     if (normalizedEmail === 'admin@ksp.rw' || normalizedEmail === 'superadmin@ksp.rw') {
       userProfile = { uid: 'demo-super_admin', fullName: 'KSP Super Admin', email: normalizedEmail, role: 'super_admin', approved: true, status: 'approved' };
     } else if (normalizedEmail === 'manager@ksp.rw') {
@@ -158,33 +123,23 @@ export async function resetUserPassword(email) {
     throw new Error("Please enter a valid email address.");
   }
   
-  try {
-    await sendPasswordResetEmail(auth, email.trim().toLowerCase());
-  } catch (err) {
-    console.warn("Firebase reset password email error:", err.message);
-  }
-
+  await sendPasswordResetEmail(auth, email.trim().toLowerCase());
   return true;
 }
 
 /**
- * Get all users for Super Admin approval panel
+ * Get all users directly from Firestore for Super Admin approval panel
  */
 export async function getAllUsers() {
-  try {
-    const snapshot = await getDocs(collection(db, "users"));
-    if (!snapshot.empty) {
-      return snapshot.docs.map(d => ({ uid: d.id, ...d.data() }));
-    }
-  } catch (e) {
-    console.warn("Firestore users list error, local fallback:", e.message);
+  const snapshot = await getDocs(collection(db, "users"));
+  if (!snapshot.empty) {
+    return snapshot.docs.map(d => ({ uid: d.id, ...d.data() }));
   }
-
-  return getLocalUsers();
+  return [];
 }
 
 /**
- * Super Admin approves or rejects a user
+ * Super Admin approves or rejects a user directly in Firestore
  */
 export async function approveUserStatus(uid, assignedRole, approved = true, actorEmail = 'admin@ksp.rw', emailVerified = true) {
   const updateData = {
@@ -195,18 +150,7 @@ export async function approveUserStatus(uid, assignedRole, approved = true, acto
     updatedAt: new Date().toISOString()
   };
 
-  try {
-    await updateDoc(doc(db, "users", uid), updateData);
-  } catch (e) {
-    console.warn("Firestore user approval update error:", e.message);
-  }
-
-  const localUsers = getLocalUsers();
-  const idx = localUsers.findIndex(u => u.uid === uid);
-  if (idx !== -1) {
-    localUsers[idx] = { ...localUsers[idx], ...updateData };
-    saveLocalUsers(localUsers);
-  }
+  await updateDoc(doc(db, "users", uid), updateData);
 
   await createAuditLog({
     action: approved ? 'APPROVE_USER' : 'REJECT_USER',
@@ -219,7 +163,7 @@ export async function approveUserStatus(uid, assignedRole, approved = true, acto
 }
 
 /**
- * Super Admin manually verifies email of a user
+ * Super Admin manually verifies email of a user directly in Firestore
  */
 export async function verifyUserEmailByAdmin(uid, emailVerified = true, actorEmail = 'admin@ksp.rw') {
   const updateData = {
@@ -227,18 +171,7 @@ export async function verifyUserEmailByAdmin(uid, emailVerified = true, actorEma
     updatedAt: new Date().toISOString()
   };
 
-  try {
-    await updateDoc(doc(db, "users", uid), updateData);
-  } catch (e) {
-    console.warn("Firestore email verification update error:", e.message);
-  }
-
-  const localUsers = getLocalUsers();
-  const idx = localUsers.findIndex(u => u.uid === uid);
-  if (idx !== -1) {
-    localUsers[idx] = { ...localUsers[idx], ...updateData };
-    saveLocalUsers(localUsers);
-  }
+  await updateDoc(doc(db, "users", uid), updateData);
 
   await createAuditLog({
     action: 'VERIFY_USER_EMAIL',
