@@ -2,9 +2,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check user role
+    // Helper function to check user role from token or Firestore user document
     function getUserRole() {
-      return request.auth.token.role;
+      return request.auth.token.role != null 
+        ? request.auth.token.role 
+        : (exists(/databases/$(database)/documents/users/$(request.auth.uid)) 
+            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role 
+            : 'staff');
     }
     
     function isAuthenticated() {
@@ -12,7 +16,12 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isAuthenticated() && (getUserRole() == 'super_admin' || request.auth.token.admin == true);
+      return isAuthenticated() && (
+        getUserRole() == 'super_admin' || 
+        request.auth.token.admin == true ||
+        request.auth.token.email == 'admin@ksp.rw' ||
+        request.auth.token.email == 'superadmin@ksp.rw'
+      );
     }
 
     function isManager() {
@@ -35,7 +44,7 @@ service cloud.firestore {
 
     // Users Collection
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isManager());
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.auth.uid == userId;
       allow update: if isSuperAdmin() || (isAuthenticated() && request.auth.uid == userId);
       allow delete: if isSuperAdmin();
