@@ -22,11 +22,11 @@ export default function BarcodeGenerator({
           font: "monospace",
           textAlign: "center",
           textPosition: "bottom",
-          textMargin: 4,
+          textMargin: 2,
           fontSize: fontSize,
           background: "#ffffff",
           lineColor: "#000000",
-          margin: 10
+          margin: 4
         });
       } catch (err) {
         console.error("Barcode generation failed:", err);
@@ -37,8 +37,8 @@ export default function BarcodeGenerator({
   if (!value) return null;
 
   return (
-    <div className={`inline-block bg-white p-2 rounded-lg border border-slate-700/50 shadow-md ${className}`}>
-      <svg ref={svgRef}></svg>
+    <div className={`bg-white rounded-lg p-1 flex items-center justify-center border border-slate-200/80 shadow-sm overflow-hidden ${className}`}>
+      <svg ref={svgRef} className="max-w-full block"></svg>
     </div>
   );
 }

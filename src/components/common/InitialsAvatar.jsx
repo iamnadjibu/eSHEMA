@@ -26,8 +26,9 @@ export default function InitialsAvatar({
       <img
         src={photoUrl}
         alt={`${firstName} ${lastName}`}
+        crossOrigin="anonymous"
         onError={() => setImageError(true)}
-        className={`${currentSizeClass} object-cover border border-slate-700/80 shadow-md ${className}`}
+        className={`${currentSizeClass} object-cover border border-slate-700/80 shadow-md shrink-0 ${className}`}
       />
     );
   }
