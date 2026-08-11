@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { Camera, X, Zap, Keyboard, AlertCircle, SwitchCamera, Scan } from 'lucide-react';
+import { Camera, X, Zap, Keyboard, AlertCircle, Scan } from 'lucide-react';
 import { SCAN_COOLDOWN_MS } from '../../utils/constants';
 import { isValidStaffCode } from '../../utils/staffCodeGenerator';
 
@@ -21,7 +21,6 @@ const SUPPORTED_FORMATS = [
 export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, title = "Scan Staff Barcode" }) {
   const [cameras, setCameras] = useState([]);
   const [selectedCameraId, setSelectedCameraId] = useState('');
-  const [facingMode, setFacingMode] = useState('environment');
   const [isScanning, setIsScanning] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -70,35 +69,31 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
     }
   }, [isOpen]);
 
-  // Start camera when modal opens
+  // Automatically start the best available camera immediately when modal opens
   useEffect(() => {
     if (!isOpen || manualMode) return;
 
-    const initCamera = async () => {
-      // Small delay to ensure DOM is ready
-      await new Promise(r => setTimeout(r, 200));
+    const autoStartBestCamera = async () => {
+      await new Promise(r => setTimeout(r, 150));
       if (!mountedRef.current) return;
 
       try {
         const devices = await Html5Qrcode.getCameras();
         if (devices && devices.length > 0) {
-          setCameras(devices);
-          const backCam = devices.find(d =>
-            /back|rear|environment/i.test(d.label)
-          );
+          // Auto-pick rear/back camera on mobile if present, otherwise default camera on PC/laptop
+          const backCam = devices.find(d => /back|rear|environment/i.test(d.label));
           const camId = backCam ? backCam.id : devices[0].id;
-          setSelectedCameraId(camId);
           await startWithCameraId(camId);
         } else {
-          await startWithFacingMode(facingMode);
+          await startWithFacingMode('environment');
         }
       } catch (err) {
-        console.warn("Camera enumeration failed, trying facingMode:", err);
-        await startWithFacingMode(facingMode);
+        console.warn("Camera enumeration fallback to facingMode:", err);
+        await startWithFacingMode('environment');
       }
     };
 
-    initCamera();
+    autoStartBestCamera();
     return () => { stopScanner(); };
   }, [isOpen, manualMode]);
 
@@ -130,9 +125,10 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
   const buildConfig = () => ({
     fps: 30, // High-speed 30 FPS frame extraction for instant decoding
     qrbox: function(viewfinderWidth, viewfinderHeight) {
-      const w = Math.min(Math.floor(viewfinderWidth * 0.90), 480);
-      const h = Math.min(Math.floor(viewfinderHeight * 0.65), 280);
-      return { width: Math.max(w, 250), height: Math.max(h, 130) };
+      // Large forgiving scan region for immediate detection at any distance
+      const w = Math.min(Math.floor(viewfinderWidth * 0.92), 520);
+      const h = Math.min(Math.floor(viewfinderHeight * 0.72), 320);
+      return { width: Math.max(w, 260), height: Math.max(h, 140) };
     },
     experimentalFeatures: {
       useBarCodeDetectorIfSupported: true // GPU hardware-accelerated barcode decoding
@@ -140,13 +136,12 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
     rememberLastUsedCamera: true,
     showTorchButtonIfSupported: false,
     showZoomSliderIfSupported: false,
-    aspectRatio: 1.777778, // Standard 16:9 widescreen optimal camera ratio
+    aspectRatio: 1.777778, // Standard widescreen 16:9 ratio
   });
 
   const handleDetectedCode = (code) => {
     const now = Date.now();
-    // Modal-level debounce (600ms) for fast consecutive scans
-    if (now - lastScanTimeRef.current < 600) return;
+    if (now - lastScanTimeRef.current < 500) return;
     lastScanTimeRef.current = now;
     if (onScanSuccess) onScanSuccess(code);
   };
@@ -185,7 +180,7 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
         }
       }
     } catch (e) {
-      // ignore track constraint error
+      // ignore
     }
   };
 
@@ -209,9 +204,9 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
 
       const videoConstraints = {
         deviceId: { exact: cameraId },
-        width: { ideal: 1280, min: 640 },
-        height: { ideal: 720, min: 480 },
-        frameRate: { ideal: 30, min: 15 }
+        width: { ideal: 1920, min: 640 },
+        height: { ideal: 1080, min: 480 },
+        frameRate: { ideal: 60, min: 30 }
       };
 
       try {
@@ -239,7 +234,7 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
     } catch (err) {
       console.warn("Camera ID start failed, trying facingMode:", err);
       startingRef.current = false;
-      await startWithFacingMode(facingMode);
+      await startWithFacingMode('environment');
     }
   };
 
@@ -263,9 +258,9 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
 
       const videoConstraints = {
         facingMode: mode,
-        width: { ideal: 1280, min: 640 },
-        height: { ideal: 720, min: 480 },
-        frameRate: { ideal: 30, min: 15 }
+        width: { ideal: 1920, min: 640 },
+        height: { ideal: 1080, min: 480 },
+        frameRate: { ideal: 60, min: 30 }
       };
 
       await html5Qrcode.start(
@@ -284,7 +279,6 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
     } catch (err) {
       startingRef.current = false;
       if (mode === 'environment') {
-        setFacingMode('user');
         await startWithFacingMode('user');
       } else {
         if (mountedRef.current) {
@@ -293,10 +287,6 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
         }
       }
     }
-  };
-
-  const checkTorch = () => {
-    applyOptimalCameraConstraints();
   };
 
   const toggleTorch = async () => {
@@ -310,22 +300,6 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
       }
     } catch (e) {
       console.warn("Torch error:", e);
-    }
-  };
-
-  const switchCamera = async () => {
-    const newMode = facingMode === 'environment' ? 'user' : 'environment';
-    setFacingMode(newMode);
-    await stopScanner();
-    setTimeout(() => startWithFacingMode(newMode), 200);
-  };
-
-  const handleCameraChange = async (e) => {
-    const newCamId = e.target.value;
-    setSelectedCameraId(newCamId);
-    if (newCamId) {
-      await stopScanner();
-      setTimeout(() => startWithCameraId(newCamId), 200);
     }
   };
 
@@ -350,7 +324,7 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
             </div>
             <div>
               <h3 className="font-bold text-white text-[15px] leading-tight">{title}</h3>
-              <p className="text-[11px] text-white/40">Position barcode within the scanning region</p>
+              <p className="text-[11px] text-white/40">Point camera at barcode for instant scan</p>
             </div>
           </div>
           <button onClick={onClose} className="glass-button p-2.5 rounded-2xl">
@@ -367,6 +341,14 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
                 justScanned ? 'border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.6)]' : 'border-white/[0.08]'
               }`} style={{ minHeight: '280px' }}>
                 <div id="reader" className="w-full"></div>
+
+                {/* Flash/Torch button overlay if supported */}
+                {torchSupported && (
+                  <button type="button" onClick={toggleTorch}
+                    className={`absolute top-3 right-3 z-30 glass-button p-2.5 rounded-2xl ${torchOn ? 'bg-white/20 border-white/30 text-amber-300' : 'text-white/70'}`}>
+                    <Zap className="w-4 h-4" />
+                  </button>
+                )}
 
                 {/* Animated 1.5s Laser Scanner Overlay */}
                 {isScanning && (
@@ -386,35 +368,10 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
                     <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/75 backdrop-blur-md border border-emerald-500/40 flex items-center gap-2 shadow-lg">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
                       <span className="text-[11px] font-mono text-emerald-300 font-semibold tracking-wide uppercase">
-                        Scanner Active • 1.5s
+                        High-Speed Scanner Active • 1.5s
                       </span>
                     </div>
                   </div>
-                )}
-              </div>
-
-              {/* Camera Controls */}
-              <div className="flex items-center justify-between gap-2 w-full">
-                <button type="button" onClick={switchCamera} className="glass-button px-4 py-2 rounded-2xl text-xs flex items-center gap-2">
-                  <SwitchCamera className="w-4 h-4 text-white/60" />
-                  <span>{facingMode === 'environment' ? 'Rear Cam' : 'Front Cam'}</span>
-                </button>
-
-                {torchSupported && (
-                  <button type="button" onClick={toggleTorch}
-                    className={`glass-button px-4 py-2 rounded-2xl text-xs flex items-center gap-2 ${torchOn ? 'bg-white/15 border-white/25' : ''}`}>
-                    <Zap className={`w-4 h-4 ${torchOn ? 'text-amber-300' : 'text-white/60'}`} />
-                    <span>Flash</span>
-                  </button>
-                )}
-
-                {cameras.length > 1 && (
-                  <select value={selectedCameraId} onChange={handleCameraChange}
-                    className="glass-input text-xs px-3 py-2 rounded-2xl max-w-[140px] truncate">
-                    {cameras.map(cam => (
-                      <option key={cam.id} value={cam.id}>{cam.label || `Camera ${cam.id}`}</option>
-                    ))}
-                  </select>
                 )}
               </div>
             </div>
