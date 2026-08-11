@@ -28,6 +28,7 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [manualMode, setManualMode] = useState(false);
+  const [justScanned, setJustScanned] = useState(false);
 
   const html5QrcodeRef = useRef(null);
   const lastScanTimeRef = useRef(0);
@@ -75,7 +76,7 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
 
     const initCamera = async () => {
       // Small delay to ensure DOM is ready
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 200));
       if (!mountedRef.current) return;
 
       try {
@@ -127,28 +128,66 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
   }, []);
 
   const buildConfig = () => ({
-    fps: 15,
+    fps: 30, // High-speed 30 FPS frame extraction for instant decoding
     qrbox: function(viewfinderWidth, viewfinderHeight) {
-      // Use a large proportion of the viewfinder for the scan region
-      const w = Math.floor(viewfinderWidth * 0.88);
-      const h = Math.floor(viewfinderHeight * 0.55);
-      return { width: Math.max(w, 250), height: Math.max(h, 120) };
+      const w = Math.min(Math.floor(viewfinderWidth * 0.90), 480);
+      const h = Math.min(Math.floor(viewfinderHeight * 0.65), 280);
+      return { width: Math.max(w, 250), height: Math.max(h, 130) };
     },
     experimentalFeatures: {
-      useBarCodeDetectorIfSupported: true
+      useBarCodeDetectorIfSupported: true // GPU hardware-accelerated barcode decoding
     },
     rememberLastUsedCamera: true,
     showTorchButtonIfSupported: false,
     showZoomSliderIfSupported: false,
+    aspectRatio: 1.777778, // Standard 16:9 widescreen optimal camera ratio
   });
 
+  const handleDetectedCode = (code) => {
+    const now = Date.now();
+    // Modal-level debounce (600ms) for fast consecutive scans
+    if (now - lastScanTimeRef.current < 600) return;
+    lastScanTimeRef.current = now;
+    if (onScanSuccess) onScanSuccess(code);
+  };
+
   const onDecodeSuccess = useCallback((decodedText) => {
+    if (mountedRef.current) {
+      setJustScanned(true);
+      setTimeout(() => {
+        if (mountedRef.current) setJustScanned(false);
+      }, 400);
+    }
     handleDetectedCode(decodedText);
   }, []);
 
   const onDecodeError = useCallback(() => {
     // Silent per-frame failure — expected behavior
   }, []);
+
+  const applyOptimalCameraConstraints = async () => {
+    try {
+      const video = document.querySelector('#reader video');
+      if (video && video.srcObject) {
+        const track = video.srcObject.getVideoTracks()[0];
+        if (track && track.getCapabilities) {
+          const caps = track.getCapabilities();
+          const advanced = {};
+          if (caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+            advanced.focusMode = 'continuous';
+          }
+          if (caps.torch) {
+            setTorchSupported(true);
+          }
+          if (Object.keys(advanced).length > 0) {
+            await track.applyConstraints({ advanced: [advanced] });
+          }
+        }
+      }
+    } catch (e) {
+      // ignore track constraint error
+    }
+  };
 
   const startWithCameraId = async (cameraId) => {
     if (startingRef.current) return;
@@ -168,18 +207,34 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
       });
       html5QrcodeRef.current = html5Qrcode;
 
-      await html5Qrcode.start(
-        cameraId,
-        buildConfig(),
-        onDecodeSuccess,
-        onDecodeError
-      );
+      const videoConstraints = {
+        deviceId: { exact: cameraId },
+        width: { ideal: 1280, min: 640 },
+        height: { ideal: 720, min: 480 },
+        frameRate: { ideal: 30, min: 15 }
+      };
+
+      try {
+        await html5Qrcode.start(
+          videoConstraints,
+          buildConfig(),
+          onDecodeSuccess,
+          onDecodeError
+        );
+      } catch (errFallback) {
+        await html5Qrcode.start(
+          cameraId,
+          buildConfig(),
+          onDecodeSuccess,
+          onDecodeError
+        );
+      }
 
       if (mountedRef.current) {
         setIsScanning(true);
         setErrorMessage('');
         startingRef.current = false;
-        checkTorch();
+        await applyOptimalCameraConstraints();
       }
     } catch (err) {
       console.warn("Camera ID start failed, trying facingMode:", err);
@@ -206,8 +261,15 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
       });
       html5QrcodeRef.current = html5Qrcode;
 
+      const videoConstraints = {
+        facingMode: mode,
+        width: { ideal: 1280, min: 640 },
+        height: { ideal: 720, min: 480 },
+        frameRate: { ideal: 30, min: 15 }
+      };
+
       await html5Qrcode.start(
-        { facingMode: mode },
+        videoConstraints,
         buildConfig(),
         onDecodeSuccess,
         onDecodeError
@@ -217,7 +279,7 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
         setIsScanning(true);
         setErrorMessage('');
         startingRef.current = false;
-        checkTorch();
+        await applyOptimalCameraConstraints();
       }
     } catch (err) {
       startingRef.current = false;
@@ -234,14 +296,7 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
   };
 
   const checkTorch = () => {
-    try {
-      const video = document.querySelector('#reader video');
-      if (video && video.srcObject) {
-        const track = video.srcObject.getVideoTracks()[0];
-        const caps = track.getCapabilities ? track.getCapabilities() : {};
-        if (caps.torch) setTorchSupported(true);
-      }
-    } catch (e) {}
+    applyOptimalCameraConstraints();
   };
 
   const toggleTorch = async () => {
@@ -262,15 +317,7 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
     const newMode = facingMode === 'environment' ? 'user' : 'environment';
     setFacingMode(newMode);
     await stopScanner();
-    // Small delay before restarting
     setTimeout(() => startWithFacingMode(newMode), 200);
-  };
-
-  const handleDetectedCode = (code) => {
-    const now = Date.now();
-    if (now - lastScanTimeRef.current < SCAN_COOLDOWN_MS) return;
-    lastScanTimeRef.current = now;
-    if (onScanSuccess) onScanSuccess(code);
   };
 
   const handleCameraChange = async (e) => {
@@ -316,8 +363,34 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
           {!manualMode ? (
             <div className="w-full flex flex-col items-center gap-3">
               {/* Camera Viewfinder */}
-              <div className="w-full rounded-2xl overflow-hidden border border-white/[0.08] bg-black/60 relative" style={{ minHeight: '280px' }}>
+              <div className={`w-full rounded-2xl overflow-hidden border transition-all duration-200 bg-black/60 relative ${
+                justScanned ? 'border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.6)]' : 'border-white/[0.08]'
+              }`} style={{ minHeight: '280px' }}>
                 <div id="reader" className="w-full"></div>
+
+                {/* Animated 1.5s Laser Scanner Overlay */}
+                {isScanning && (
+                  <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden rounded-2xl">
+                    {/* Corner Bracket Reticles */}
+                    <div className="scanner-corner scanner-corner-tl" />
+                    <div className="scanner-corner scanner-corner-tr" />
+                    <div className="scanner-corner scanner-corner-bl" />
+                    <div className="scanner-corner scanner-corner-br" />
+
+                    {/* Animated Laser Scanline (1.5s Loop) */}
+                    <div className="scanner-laser-line">
+                      <div className="scanner-laser-beam" />
+                    </div>
+
+                    {/* Live Scanner Radar Status Badge */}
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/75 backdrop-blur-md border border-emerald-500/40 flex items-center gap-2 shadow-lg">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                      <span className="text-[11px] font-mono text-emerald-300 font-semibold tracking-wide uppercase">
+                        Scanner Active • 1.5s
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Camera Controls */}

@@ -122,9 +122,10 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* ─── Scanner Overrides ─── */
+/* ─── Scanner Overrides & Laser Line ─── */
 #reader {
   border: none !important;
+  position: relative !important;
 }
 #reader video {
   border-radius: 16px !important;
@@ -143,7 +144,85 @@
   display: none !important;
 }
 #qr-shaded-region {
-  border-color: rgba(255, 255, 255, 0.5) !important;
+  border-color: rgba(52, 211, 153, 0.4) !important;
+  border-radius: 16px !important;
+}
+
+/* ─── Animated Scanner Laser Line (1.5s vertical loop) ─── */
+@keyframes scanline {
+  0% {
+    top: 5%;
+    opacity: 0.85;
+  }
+  50% {
+    top: 90%;
+    opacity: 1;
+  }
+  100% {
+    top: 5%;
+    opacity: 0.85;
+  }
+}
+
+.scanner-laser-line {
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, #10b981 15%, #34d399 50%, #10b981 85%, transparent 100%);
+  box-shadow: 0 0 14px #34d399, 0 0 28px #10b981, 0 0 40px rgba(16, 185, 129, 0.5);
+  animation: scanline 1.5s ease-in-out infinite;
+  z-index: 30;
+  pointer-events: none;
+  border-radius: 9999px;
+}
+
+.scanner-laser-beam {
+  position: absolute;
+  top: -28px;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background: linear-gradient(180deg, transparent 0%, rgba(52, 211, 153, 0.25) 100%);
+  pointer-events: none;
+}
+
+/* Reticle Corner Brackets */
+.scanner-corner {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-color: rgba(52, 211, 153, 0.9);
+  pointer-events: none;
+  z-index: 25;
+}
+.scanner-corner-tl {
+  top: 10px;
+  left: 10px;
+  border-top-width: 3px;
+  border-left-width: 3px;
+  border-top-left-radius: 8px;
+}
+.scanner-corner-tr {
+  top: 10px;
+  right: 10px;
+  border-top-width: 3px;
+  border-right-width: 3px;
+  border-top-right-radius: 8px;
+}
+.scanner-corner-bl {
+  bottom: 10px;
+  left: 10px;
+  border-bottom-width: 3px;
+  border-left-width: 3px;
+  border-bottom-left-radius: 8px;
+}
+.scanner-corner-br {
+  bottom: 10px;
+  right: 10px;
+  border-bottom-width: 3px;
+  border-right-width: 3px;
+  border-bottom-right-radius: 8px;
 }
 
 /* ─── Print ─── */
