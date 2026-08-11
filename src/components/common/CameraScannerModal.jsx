@@ -77,20 +77,7 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
       await new Promise(r => setTimeout(r, 150));
       if (!mountedRef.current) return;
 
-      try {
-        const devices = await Html5Qrcode.getCameras();
-        if (devices && devices.length > 0) {
-          // Auto-pick rear/back camera on mobile if present, otherwise default camera on PC/laptop
-          const backCam = devices.find(d => /back|rear|environment/i.test(d.label));
-          const camId = backCam ? backCam.id : devices[0].id;
-          await startWithCameraId(camId);
-        } else {
-          await startWithFacingMode('environment');
-        }
-      } catch (err) {
-        console.warn("Camera enumeration fallback to facingMode:", err);
-        await startWithFacingMode('environment');
-      }
+      await startResilientScanner();
     };
 
     autoStartBestCamera();
@@ -123,12 +110,11 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
   }, []);
 
   const buildConfig = () => ({
-    fps: 30, // High-speed 30 FPS frame extraction for instant decoding
+    fps: 25, // High-speed 25 FPS frame extraction for instant decoding without CPU overload
     qrbox: function(viewfinderWidth, viewfinderHeight) {
-      // Large forgiving scan region for immediate detection at any distance
       const w = Math.min(Math.floor(viewfinderWidth * 0.92), 520);
       const h = Math.min(Math.floor(viewfinderHeight * 0.72), 320);
-      return { width: Math.max(w, 260), height: Math.max(h, 140) };
+      return { width: Math.max(w, 240), height: Math.max(h, 130) };
     },
     experimentalFeatures: {
       useBarCodeDetectorIfSupported: true // GPU hardware-accelerated barcode decoding
@@ -136,7 +122,6 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
     rememberLastUsedCamera: true,
     showTorchButtonIfSupported: false,
     showZoomSliderIfSupported: false,
-    aspectRatio: 1.777778, // Standard widescreen 16:9 ratio
   });
 
   const handleDetectedCode = (code) => {
@@ -180,111 +165,89 @@ export default function CameraScannerModal({ isOpen, onClose, onScanSuccess, tit
         }
       }
     } catch (e) {
-      // ignore
+      // ignore track constraint error
     }
   };
 
-  const startWithCameraId = async (cameraId) => {
+  // Resilient Multi-Tier Camera Startup Sequence (Prevents OverconstrainedError on Mobile)
+  const startResilientScanner = async () => {
     if (startingRef.current) return;
     startingRef.current = true;
     await stopScanner();
 
+    const readerEl = document.getElementById('reader');
+    if (!readerEl) {
+      startingRef.current = false;
+      return;
+    }
+
+    const html5Qrcode = new Html5Qrcode("reader", {
+      formatsToSupport: SUPPORTED_FORMATS,
+      verbose: false
+    });
+    html5QrcodeRef.current = html5Qrcode;
+
+    const config = buildConfig();
+
+    // List of camera start options to try sequentially without strict min constraints
+    const cameraOptionsToTry = [
+      // 1. Rear camera with ideal resolution (Soft constraints)
+      { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      // 2. Generic rear facingMode
+      { facingMode: "environment" },
+      // 3. User / selfie facingMode
+      { facingMode: "user" },
+    ];
+
+    // Try enumerating camera device IDs as additional options if available
     try {
-      const readerEl = document.getElementById('reader');
-      if (!readerEl) {
-        startingRef.current = false;
-        return;
+      const devices = await Html5Qrcode.getCameras();
+      if (devices && devices.length > 0) {
+        setCameras(devices);
+        const backCam = devices.find(d => /back|rear|environment/i.test(d.label));
+        if (backCam) {
+          cameraOptionsToTry.unshift(backCam.id);
+        } else {
+          cameraOptionsToTry.push(devices[0].id);
+        }
       }
+    } catch (e) {
+      // ignore camera enumeration failure
+    }
 
-      const html5Qrcode = new Html5Qrcode("reader", {
-        formatsToSupport: SUPPORTED_FORMATS,
-        verbose: false
-      });
-      html5QrcodeRef.current = html5Qrcode;
+    let startedSuccess = false;
+    let lastError = null;
 
-      const videoConstraints = {
-        deviceId: { exact: cameraId },
-        width: { ideal: 1920, min: 640 },
-        height: { ideal: 1080, min: 480 },
-        frameRate: { ideal: 60, min: 30 }
-      };
-
+    for (const cameraOption of cameraOptionsToTry) {
+      if (!mountedRef.current) break;
       try {
         await html5Qrcode.start(
-          videoConstraints,
-          buildConfig(),
+          cameraOption,
+          config,
           onDecodeSuccess,
           onDecodeError
         );
-      } catch (errFallback) {
-        await html5Qrcode.start(
-          cameraId,
-          buildConfig(),
-          onDecodeSuccess,
-          onDecodeError
-        );
+        startedSuccess = true;
+        break;
+      } catch (err) {
+        lastError = err;
+        console.warn("Camera option failed, trying next option:", cameraOption, err);
       }
-
-      if (mountedRef.current) {
-        setIsScanning(true);
-        setErrorMessage('');
-        startingRef.current = false;
-        await applyOptimalCameraConstraints();
-      }
-    } catch (err) {
-      console.warn("Camera ID start failed, trying facingMode:", err);
-      startingRef.current = false;
-      await startWithFacingMode('environment');
     }
-  };
 
-  const startWithFacingMode = async (mode) => {
-    if (startingRef.current) return;
-    startingRef.current = true;
-    await stopScanner();
-
-    try {
-      const readerEl = document.getElementById('reader');
-      if (!readerEl) {
-        startingRef.current = false;
-        return;
-      }
-
-      const html5Qrcode = new Html5Qrcode("reader", {
-        formatsToSupport: SUPPORTED_FORMATS,
-        verbose: false
-      });
-      html5QrcodeRef.current = html5Qrcode;
-
-      const videoConstraints = {
-        facingMode: mode,
-        width: { ideal: 1920, min: 640 },
-        height: { ideal: 1080, min: 480 },
-        frameRate: { ideal: 60, min: 30 }
-      };
-
-      await html5Qrcode.start(
-        videoConstraints,
-        buildConfig(),
-        onDecodeSuccess,
-        onDecodeError
-      );
-
-      if (mountedRef.current) {
-        setIsScanning(true);
-        setErrorMessage('');
-        startingRef.current = false;
-        await applyOptimalCameraConstraints();
-      }
-    } catch (err) {
+    if (startedSuccess && mountedRef.current) {
+      setIsScanning(true);
+      setErrorMessage('');
       startingRef.current = false;
-      if (mode === 'environment') {
-        await startWithFacingMode('user');
+      await applyOptimalCameraConstraints();
+    } else if (mountedRef.current) {
+      startingRef.current = false;
+      setIsScanning(false);
+      const isPermissionErr = lastError && /notallowed|permission/i.test(lastError.toString());
+      if (isPermissionErr) {
+        setErrorMessage('Camera access denied. Please tap the lock icon in your browser address bar to allow camera access.');
       } else {
-        if (mountedRef.current) {
-          setErrorMessage('Camera unavailable. Grant browser camera permission or use manual entry below.');
-          setIsScanning(false);
-        }
+        setErrorMessage('Unable to access camera device. Please grant permissions or use manual entry below.');
       }
     }
   };
